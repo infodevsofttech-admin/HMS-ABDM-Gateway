@@ -225,6 +225,122 @@ Every inbound request and outbound ABDM API call is written to the `audit_logs` 
 
 The project ships with a production-ready **Dockerfile** and **docker-compose.yml** so it can be deployed on any cloud that supports containers.
 
+---
+
+### Option 0 – CentOS 7 / RHEL 7 with Apache (bare-metal / existing server)
+
+> **Your existing stack (CentOS 7 + Apache + MySQL + PHP 8.3) is fully supported.** No Docker is required.
+
+#### 1. Verify / install required PHP extensions
+
+CodeIgniter 4 requires the extensions below. Run this to check which are missing:
+
+```bash
+php -m | grep -E "intl|mbstring|curl|json|mysqlnd|pdo|pdo_mysql|xml|zip|gd"
+```
+
+Install any that are missing (PHP 8.3 from Remi repo):
+
+```bash
+sudo yum install -y \
+    php83-php-intl \
+    php83-php-mbstring \
+    php83-php-curl \
+    php83-php-json \
+    php83-php-mysqlnd \
+    php83-php-pdo \
+    php83-php-xml \
+    php83-php-zip \
+    php83-php-gd
+```
+
+#### 2. Enable Apache `mod_rewrite`
+
+```bash
+sudo yum install -y mod_rewrite    # usually already installed
+sudo systemctl enable httpd && sudo systemctl start httpd
+```
+
+Make sure your Apache `VirtualHost` (or `httpd.conf`) allows `.htaccess` overrides:
+
+```apache
+<Directory "/var/www/html/hms-abdm-gateway/public">
+    AllowOverride All
+    Require all granted
+</Directory>
+```
+
+#### 3. Install Composer (if not already installed)
+
+```bash
+php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+php -r "unlink('composer-setup.php');"
+```
+
+#### 4. Deploy the application
+
+Use the included helper script (or run the commands manually):
+
+```bash
+# Clone the repository into Apache's document root
+cd /var/www/html
+sudo git clone https://github.com/infodevsofttech-admin/HMS-ABDM-Gateway.git hms-abdm-gateway
+cd hms-abdm-gateway
+
+# Run the deploy script (installs deps, sets permissions, etc.)
+sudo bash deploy-centos.sh
+```
+
+The `deploy-centos.sh` script will:
+1. Install Composer dependencies
+2. Copy `env` → `.env` and open it for editing (add your DB/ABDM credentials)
+3. Set correct ownership (`apache:apache`) and permissions on `writable/`
+4. Run database migrations
+
+#### 5. Configure Apache VirtualHost
+
+```apache
+<VirtualHost *:80>
+    ServerName yourdomain.com
+    DocumentRoot /var/www/html/hms-abdm-gateway/public
+
+    <Directory /var/www/html/hms-abdm-gateway/public>
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    ErrorLog  /var/log/httpd/hms-abdm-gateway-error.log
+    CustomLog /var/log/httpd/hms-abdm-gateway-access.log combined
+</VirtualHost>
+```
+
+Save to `/etc/httpd/conf.d/hms-abdm-gateway.conf` then:
+
+```bash
+sudo apachectl configtest && sudo systemctl reload httpd
+```
+
+#### 6. Set up the sync-queue cron job
+
+```bash
+# Edit root crontab
+sudo crontab -e
+
+# Add this line to run every 5 minutes
+*/5 * * * * /usr/bin/php /var/www/html/hms-abdm-gateway/spark abdm:process-queue >> /var/log/hms-abdm-queue.log 2>&1
+```
+
+#### 7. Test the deployment
+
+```bash
+curl -X POST http://yourdomain.com/sync/hospital \
+  -H "Content-Type: application/json" \
+  -d '{"hms_id":"HOSP-001","name":"Test Hospital","state":"MH","district":"Pune"}'
+```
+
+---
+
 ### Option 1 – Docker (any cloud VPS / VM)
 
 Works on AWS EC2, GCP Compute Engine, Azure VM, DigitalOcean Droplet, etc.
