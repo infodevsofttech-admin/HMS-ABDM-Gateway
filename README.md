@@ -221,6 +221,115 @@ Every inbound request and outbound ABDM API call is written to the `audit_logs` 
 
 ---
 
+## HMS Integration — API Key Setup
+
+While the ABDM Sandbox credentials are being obtained, the local HMS (e.g. `devsofttech_hms_ci4`) can be connected to this gateway using a simple API key. Each hospital registers once via the gateway **admin panel**, receives a unique key, and every subsequent sync request carries that key in an HTTP header.
+
+### Step 1 — Configure the admin token
+
+Generate a strong random token and add it to the gateway's `.env`:
+
+```bash
+php -r "echo bin2hex(random_bytes(24));"
+# example output: a3f9d2c1e4b78f0a1c3d2e5b9a7f4c8d6e2b0a1d3c5e7f9
+```
+
+```ini
+# gateway/.env
+GATEWAY_ADMIN_TOKEN = a3f9d2c1e4b78f0a1c3d2e5b9a7f4c8d6e2b0a1d3c5e7f9
+```
+
+### Step 2 — Register your hospital in the admin panel
+
+1. Open `http://<gateway-server>/admin/login` in a browser.
+2. Enter the `GATEWAY_ADMIN_TOKEN` value.
+3. Click **+ Register New Hospital** and fill in:
+   - **Hospital Name** — e.g. `City General Hospital`
+   - **HMS ID** — must match the `hms_id` your HMS sends in sync payloads (e.g. `HOSP-001`)
+   - State, district, contact details (optional)
+4. Click **Register & Generate API Key**.
+5. **Copy the displayed key immediately** — it is only shown once.
+
+### Step 3 — Configure the local HMS
+
+Add the gateway URL and API key to the **local HMS** `.env`:
+
+```ini
+# local HMS (devsofttech_hms_ci4) .env
+ABDM_GATEWAY_URL     = http://your-gateway-server
+ABDM_GATEWAY_API_KEY = <paste key from step 2>
+```
+
+### Step 4 — Install the connector library in the local HMS
+
+Copy `app/Libraries/HmsGatewayConnector.php` from this repository into the HMS:
+
+```bash
+cp app/Libraries/HmsGatewayConnector.php \
+   /path/to/devsofttech_hms_ci4/app/Libraries/
+```
+
+Then use it from any HMS controller or service:
+
+```php
+<?php
+// In the local HMS — e.g. app/Controllers/Hospital.php
+
+use App\Libraries\HmsGatewayConnector;
+
+$gw = new HmsGatewayConnector();   // reads ABDM_GATEWAY_URL + ABDM_GATEWAY_API_KEY from .env
+
+// Register the hospital in HFR (via the gateway)
+$result = $gw->syncHospital([
+    'hms_id'   => 'HOSP-001',
+    'name'     => 'City General Hospital',
+    'state'    => 'Maharashtra',
+    'district' => 'Pune',
+    'address'  => '123 MG Road, Pune 411001',
+    'type'     => 'allopathy',
+]);
+
+if ($result['success']) {
+    // HFR registration succeeded
+    $hfrId = $result['data']['hfr_id'] ?? null;
+} elseif ($result['status_code'] === 202) {
+    // ABDM is unreachable — queued for retry
+    $queueId = $result['queue_id'];
+} else {
+    // error
+    log_message('error', 'Gateway error: ' . $result['message']);
+}
+```
+
+### All available methods
+
+| Method | Gateway endpoint | Purpose |
+|--------|-----------------|---------|
+| `syncHospital(array $data)` | `POST /sync/hospital` | Register facility in HFR |
+| `syncDoctor(array $data)` | `POST /sync/doctor` | Register doctor in HPR |
+| `syncPatient(array $data)` | `POST /sync/patient` | Create ABHA ID |
+| `syncRecord('opd', $data)` | `POST /sync/records/opd` | Push OPD record |
+| `syncRecord('ipd', $data)` | `POST /sync/records/ipd` | Push IPD record |
+| `syncRecord('lab', $data)` | `POST /sync/records/lab` | Push lab report |
+| `syncRecord('radiology', $data)` | `POST /sync/records/radiology` | Push radiology report |
+| `syncRecord('pharmacy', $data)` | `POST /sync/records/pharmacy` | Push prescription / dispense |
+
+### Raw HTTP example (curl)
+
+```bash
+curl -X POST http://gateway-server/sync/hospital \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{
+    "hms_id": "HOSP-001",
+    "name":   "City General Hospital",
+    "state":  "Maharashtra",
+    "district":"Pune"
+  }'
+```
+
+---
+
 ## Cloud Deployment
 
 The project ships with a production-ready **Dockerfile** and **docker-compose.yml** so it can be deployed on any cloud that supports containers.

@@ -81,3 +81,7 @@
 # ABDM API Client Credentials (obtain from ABDM sandbox portal)
 # ABDM_CLIENT_ID = your-client-id
 # ABDM_CLIENT_SECRET = your-client-secret
+
+# Admin Panel Password Token
+# Generate a strong random string: php -r "echo bin2hex(random_bytes(24));"
+# GATEWAY_ADMIN_TOKEN = change-me-to-a-secure-random-string

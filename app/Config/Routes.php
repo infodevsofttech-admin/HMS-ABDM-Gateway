@@ -10,8 +10,9 @@ $routes->get('/', 'Home::index');
 /*
  * HMS-ABDM Gateway API Routes
  * All sync endpoints accept JSON POST bodies.
+ * Requests must carry a valid X-API-Key header (obtain from the admin panel).
  */
-$routes->group('sync', ['filter' => 'cors'], static function (RouteCollection $routes): void {
+$routes->group('sync', ['filter' => ['cors', 'apikey']], static function (RouteCollection $routes): void {
     // Hospital registration in HFR
     $routes->post('hospital', 'Hospital::register');
 
@@ -30,4 +31,22 @@ $routes->group('sync', ['filter' => 'cors'], static function (RouteCollection $r
         $routes->post('pharmacy',  'Records::pushPharmacy');
     });
 });
+
+/*
+ * Admin Panel Routes
+ * Protected by session-based login (GATEWAY_ADMIN_TOKEN in .env).
+ */
+$routes->group('admin', ['filter' => ['adminauth', 'csrf']], static function (RouteCollection $routes): void {
+    $routes->get('/',              'Admin::index');
+    $routes->get('register',       'Admin::showRegisterForm');
+    $routes->post('register',      'Admin::registerHospital');
+    $routes->get('regenerate/(:num)',  'Admin::regenerateKey/$1');
+    $routes->get('toggle/(:num)',      'Admin::toggleActive/$1');
+    $routes->get('delete/(:num)',      'Admin::delete/$1');
+});
+
+// Admin login / logout (no auth filter)
+$routes->get('admin/login',  'Admin::login');
+$routes->post('admin/login', 'Admin::doLogin');
+$routes->get('admin/logout', 'Admin::logout');
 
