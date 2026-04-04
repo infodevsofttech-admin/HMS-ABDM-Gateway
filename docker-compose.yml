@@ -1,0 +1,61 @@
+services:
+
+  # -------------------------------------------------------------------------
+  # Application (PHP 8.2 + Nginx, built from Dockerfile)
+  # -------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      CI_ENVIRONMENT: production
+      # Database
+      database.default.hostname: db
+      database.default.database: hms_abdm_gateway
+      database.default.username: hmsuser
+      database.default.password: hmspassword
+      database.default.DBDriver: MySQLi
+      # ABDM API
+      ABDM_ENVIRONMENT: sandbox
+      ABDM_BASE_URL: https://dev.abdm.gov.in
+      ABDM_CLIENT_ID: "${ABDM_CLIENT_ID}"
+      ABDM_CLIENT_SECRET: "${ABDM_CLIENT_SECRET}"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - app_logs:/var/www/html/writable/logs
+    networks:
+      - hms_network
+
+  # -------------------------------------------------------------------------
+  # MySQL 8 database
+  # -------------------------------------------------------------------------
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: hms_abdm_gateway
+      MYSQL_USER: hmsuser
+      MYSQL_PASSWORD: hmspassword
+      MYSQL_ROOT_PASSWORD: rootpassword
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "hmsuser", "--password=hmspassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hms_network
+
+volumes:
+  db_data:
+  app_logs:
+
+networks:
+  hms_network:
+    driver: bridge

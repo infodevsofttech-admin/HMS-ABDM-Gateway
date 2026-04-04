@@ -4,8 +4,12 @@
 # Environment files (contain credentials)
 .env
 
-# CodeIgniter writable directory (logs, cache, sessions, uploads)
-/writable/
+# CodeIgniter writable directory – keep structure, ignore runtime files
+/writable/cache/*
+/writable/logs/*
+/writable/session/*
+/writable/uploads/*
+!/writable/**/.gitkeep
 
 # PHPUnit build output
 /build/
