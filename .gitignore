@@ -1,0 +1,21 @@
+# Composer dependencies
+/vendor/
+
+# Environment files (contain credentials)
+.env
+
+# CodeIgniter writable directory (logs, cache, sessions, uploads)
+/writable/
+
+# PHPUnit build output
+/build/
+
+# IDE and OS files
+.idea/
+.vscode/
+*.DS_Store
+Thumbs.db
+
+# PHPUnit cache
+.phpunit.cache/
+.phpunit.result.cache
