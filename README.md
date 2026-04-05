@@ -330,15 +330,11 @@ curl -X POST http://gateway-server/sync/hospital \
 
 ---
 
-## Cloud Deployment
+## Deployment
 
-The project ships with a production-ready **Dockerfile** and **docker-compose.yml** so it can be deployed on any cloud that supports containers.
+### CentOS 7 / RHEL 7 with Apache (bare-metal / existing server)
 
----
-
-### Option 0 – CentOS 7 / RHEL 7 with Apache (bare-metal / existing server)
-
-> **Your existing stack (CentOS 7 + Apache + MySQL + PHP 8.3) is fully supported.** No Docker is required.
+> **Your existing stack (CentOS 7 + Apache + MySQL + PHP 8.3) is fully supported.**
 
 #### 1. Verify / install required PHP extensions
 
@@ -447,96 +443,6 @@ curl -X POST http://yourdomain.com/sync/hospital \
   -H "Content-Type: application/json" \
   -d '{"hms_id":"HOSP-001","name":"Test Hospital","state":"MH","district":"Pune"}'
 ```
-
----
-
-### Option 1 – Docker (any cloud VPS / VM)
-
-Works on AWS EC2, GCP Compute Engine, Azure VM, DigitalOcean Droplet, etc.
-
-```bash
-# 1. Clone & configure
-git clone https://github.com/infodevsofttech-admin/HMS-ABDM-Gateway.git
-cd HMS-ABDM-Gateway
-
-# 2. Set your ABDM credentials as environment variables (or put them in .env)
-export ABDM_CLIENT_ID=your-client-id
-export ABDM_CLIENT_SECRET=your-client-secret
-
-# 3. Start the stack (app + MySQL)
-docker compose up -d
-
-# 4. Run database migrations inside the container
-docker compose exec app php spark migrate
-
-# Application is now live at http://<your-server-ip>:8080
-```
-
-> **Note:** For HTTPS (required for production ABDM), place Nginx or a cloud load balancer in front and terminate TLS there.
-
----
-
-### Option 2 – Railway (zero-config PaaS)
-
-1. Push this repository to GitHub.
-2. Go to [railway.app](https://railway.app) → **New Project → Deploy from GitHub repo**.
-3. Railway auto-detects the `Dockerfile`.
-4. Add a **MySQL** plugin from the Railway dashboard.
-5. Set the following environment variables in Railway's **Variables** tab:
-
-   | Variable | Value |
-   |----------|-------|
-   | `CI_ENVIRONMENT` | `production` |
-   | `database.default.hostname` | *(Railway MySQL host)* |
-   | `database.default.database` | *(Railway MySQL DB name)* |
-   | `database.default.username` | *(Railway MySQL user)* |
-   | `database.default.password` | *(Railway MySQL password)* |
-   | `ABDM_BASE_URL` | `https://dev.abdm.gov.in` |
-   | `ABDM_CLIENT_ID` | *(your ABDM client ID)* |
-   | `ABDM_CLIENT_SECRET` | *(your ABDM client secret)* |
-
-6. Railway will build and deploy automatically. Run migrations via the **Railway CLI**:
-   ```bash
-   railway run php spark migrate
-   ```
-
----
-
-### Option 3 – AWS Elastic Beanstalk
-
-1. Install the [EB CLI](https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/eb-cli3.html).
-2. From the project root:
-   ```bash
-   eb init hms-abdm-gateway --platform docker
-   eb create hms-abdm-prod
-   ```
-3. Set environment variables via the EB console or:
-   ```bash
-   eb setenv CI_ENVIRONMENT=production \
-             ABDM_CLIENT_ID=your-id \
-             ABDM_CLIENT_SECRET=your-secret \
-             ABDM_BASE_URL=https://dev.abdm.gov.in
-   ```
-4. Use **Amazon RDS (MySQL 8)** for the database and set `database.default.*` variables accordingly.
-
----
-
-### Option 4 – Google Cloud Run (serverless containers)
-
-```bash
-# Build and push to Google Artifact Registry
-gcloud builds submit --tag gcr.io/YOUR_PROJECT/hms-abdm-gateway
-
-# Deploy
-gcloud run deploy hms-abdm-gateway \
-  --image gcr.io/YOUR_PROJECT/hms-abdm-gateway \
-  --platform managed \
-  --region asia-south1 \
-  --allow-unauthenticated \
-  --set-env-vars CI_ENVIRONMENT=production,ABDM_CLIENT_ID=...,ABDM_CLIENT_SECRET=...
-```
-
-Use **Cloud SQL (MySQL)** for the database and pass the connection via environment variables.
 
 ---
 
