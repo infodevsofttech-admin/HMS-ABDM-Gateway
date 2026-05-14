@@ -129,6 +129,69 @@ $createdAt= is_object($hospital) ? ($hospital->created_at ?? '—') : (is_array(
         </div>
     </div>
 
+    <!-- Change Password -->
+    <div class="row" style="margin-top:4px;">
+        <div class="col-md-6">
+            <div class="hp-card">
+                <div class="hp-card-head"><i class="fas fa-key"></i> Change Password</div>
+                <div class="hp-card-body">
+                    <?php if (session()->getFlashdata('pw_error')): ?>
+                    <div class="alert alert-danger" style="font-size:13px;padding:10px 14px;">
+                        <i class="fas fa-exclamation-circle mr-1"></i> <?= esc(session()->getFlashdata('pw_error')) ?>
+                    </div>
+                    <?php endif; ?>
+                    <?php if (session()->getFlashdata('pw_success')): ?>
+                    <div class="alert alert-success" style="font-size:13px;padding:10px 14px;">
+                        <i class="fas fa-check-circle mr-1"></i> <?= esc(session()->getFlashdata('pw_success')) ?>
+                    </div>
+                    <?php endif; ?>
+                    <form method="post" action="/portal/profile/change-password">
+                        <?= csrf_field() ?>
+                        <div class="form-group mb-3">
+                            <label style="font-size:13px;font-weight:600;">Current Password <span style="color:#dc3545;">*</span></label>
+                            <input type="password" name="current_password" class="form-control" style="font-size:13px;" required autocomplete="current-password">
+                        </div>
+                        <div class="form-group mb-3">
+                            <label style="font-size:13px;font-weight:600;">New Password <span style="color:#dc3545;">*</span></label>
+                            <input type="password" name="new_password" id="newPw" class="form-control" style="font-size:13px;" required minlength="8" autocomplete="new-password">
+                            <div style="font-size:11px;color:#6c757d;margin-top:3px;">Minimum 8 characters.</div>
+                        </div>
+                        <div class="form-group mb-4">
+                            <label style="font-size:13px;font-weight:600;">Confirm New Password <span style="color:#dc3545;">*</span></label>
+                            <input type="password" name="confirm_password" id="confirmPw" class="form-control" style="font-size:13px;" required autocomplete="new-password">
+                            <div id="pwMatchMsg" style="font-size:11px;margin-top:3px;"></div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="font-size:13px;">
+                            <i class="fas fa-save mr-1"></i> Update Password
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div><!-- /.hp-content -->
 
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script>
+(function() {
+    var np = document.getElementById('newPw');
+    var cp = document.getElementById('confirmPw');
+    var msg = document.getElementById('pwMatchMsg');
+    function check() {
+        if (cp.value === '') { msg.textContent = ''; return; }
+        if (np.value === cp.value) {
+            msg.textContent = '✓ Passwords match';
+            msg.style.color = '#198754';
+        } else {
+            msg.textContent = '✗ Passwords do not match';
+            msg.style.color = '#dc3545';
+        }
+    }
+    np.addEventListener('input', check);
+    cp.addEventListener('input', check);
+})();
+</script>
 <?= $this->endSection() ?>

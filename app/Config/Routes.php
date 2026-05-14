@@ -24,6 +24,7 @@ $routes->post('portal/opd-queue/status','Hospital::opdQueueUpdateStatusPost',['f
 $routes->get('portal/patients',        'Hospital::patients',              ['filter' => 'auth']);
 $routes->get('portal/reports',         'Hospital::reports',               ['filter' => 'auth']);
 $routes->get('portal/profile',         'Hospital::profile',               ['filter' => 'auth']);
+$routes->post('portal/profile/change-password', 'Hospital::changePasswordPost', ['filter' => 'auth']);
 $routes->get('portal/tickets',          'Hospital::tickets',               ['filter' => 'auth']);
 $routes->get('portal/tickets/new',      'Hospital::ticketNew',             ['filter' => 'auth']);
 $routes->post('portal/tickets/new',     'Hospital::ticketNewPost',         ['filter' => 'auth']);

@@ -329,6 +329,36 @@ class Hospital extends BaseController
         return view('hospital/profile', ['hospital' => $hospital]);
     }
 
+    public function changePasswordPost()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $currentPw  = (string) $this->request->getPost('current_password');
+        $newPw      = (string) $this->request->getPost('new_password');
+        $confirmPw  = (string) $this->request->getPost('confirm_password');
+
+        if ($currentPw === '' || $newPw === '' || $confirmPw === '') {
+            return redirect()->to('/portal/profile')->with('pw_error', 'All password fields are required.');
+        }
+        if (strlen($newPw) < 8) {
+            return redirect()->to('/portal/profile')->with('pw_error', 'New password must be at least 8 characters.');
+        }
+        if ($newPw !== $confirmPw) {
+            return redirect()->to('/portal/profile')->with('pw_error', 'New password and confirmation do not match.');
+        }
+
+        $uid       = (int) session()->get('user_id');
+        $userModel = new \App\Models\AbdmHospitalUser();
+        $user      = $userModel->find($uid);
+
+        if ($user === null || !password_verify($currentPw, $user->password_hash)) {
+            return redirect()->to('/portal/profile')->with('pw_error', 'Current password is incorrect.');
+        }
+
+        $userModel->update($uid, ['password_hash' => password_hash($newPw, PASSWORD_BCRYPT)]);
+        return redirect()->to('/portal/profile')->with('pw_success', 'Password changed successfully.');
+    }
+
     // ─── Logout ───────────────────────────────────────────────────────────────
 
     public function logout()
