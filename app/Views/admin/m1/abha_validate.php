@@ -1,10 +1,16 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ABHA Validate - M1 Module</title>
-    <style>
+<?= $this->extend('layout/admin_layout') ?>
+<?php $title = 'ABHA Validate'; ?>
+
+<?= $this->section('content') ?>
+
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-search"></i> ABHA Validate <small>Quick lookup by ABHA Number</small></h3>
+    </div>
+</div>
+<div class="clearfix"></div>
+
+<style>
         body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; color: #111827; }
         .card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
         .stack { display: grid; gap: 16px; }
@@ -21,11 +27,10 @@
         .pill.bad { background: #fee2e2; color: #991b1b; }
         .row { display: flex; gap: 16px; }
         .row > div { flex: 1; }
-    </style>
-</head>
-<body>
-    <p><a href="/admin/m1">Back to M1 Suite</a></p>
-    <h1>ABHA Validate (M1)</h1>
+    .stack { max-width: 820px; }
+</style>
+
+<div class="stack">
     <div class="stack">
         <?php if (!empty($message)): ?>
             <div class="ok"><?= esc((string) $message) ?></div>
@@ -78,6 +83,6 @@
         </div>
         <?php endif; ?>
     </div>
+</div>
 
-</body>
-</html>
+<?= $this->endSection() ?>

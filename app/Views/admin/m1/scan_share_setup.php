@@ -1,10 +1,19 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Scan &amp; Share Setup - M1 Module</title>
-    <style>
+<?= $this->extend('layout/admin_layout') ?>
+<?php $title = 'Scan & Share Setup'; ?>
+
+<?= $this->section('content') ?>
+
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-cogs"></i> Scan &amp; Share Setup <small>Register bridge URL and HIP with ABDM</small></h3>
+    </div>
+    <div class="title_right">
+        <a href="/admin/m1/scan-share" class="btn btn-default btn-sm"><i class="fa fa-ticket"></i> View Token Queue</a>
+    </div>
+</div>
+<div class="clearfix"></div>
+
+<style>
         body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; color: #111827; max-width: 700px; }
         .card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px; }
         h2 { margin-top: 0; font-size: 16px; border-bottom: 1px solid #f3f4f6; padding-bottom: 10px; }
@@ -20,20 +29,16 @@
         .step-num { display: inline-block; background: #2563eb; color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; font-size: 12px; font-weight: 700; margin-right: 6px; }
         a { color: #2563eb; text-decoration: none; }
         code { background: #f3f4f6; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
-    </style>
-</head>
-<body>
-    <p><a href="/admin/m1">← Back to M1 Suite</a> &nbsp;|&nbsp; <a href="/admin/m1/scan-share">View Token Queue →</a></p>
-    <h1>Scan &amp; Share — Setup</h1>
+</style>
 
-    <?php if (!empty($message)): ?>
-        <div class="ok"><?= esc((string) $message) ?></div>
-    <?php endif; ?>
-    <?php if (!empty($error)): ?>
-        <div class="err"><?= esc((string) $error) ?></div>
-    <?php endif; ?>
+<?php if (!empty($message)): ?>
+    <div class="alert alert-success"><?= esc((string) $message) ?></div>
+<?php endif; ?>
+<?php if (!empty($error)): ?>
+    <div class="alert alert-danger"><?= esc((string) $error) ?></div>
+<?php endif; ?>
 
-    <?php if (!empty($result) && is_array($result)): ?>
+<?php if (!empty($result) && is_array($result)): ?>
     <div class="card">
         <h2>Last API Result</h2>
         <div class="mono"><?= esc(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) ?></div>
@@ -126,5 +131,4 @@
             Then check the <a href="/admin/m1/scan-share">Token Queue</a> — a token should appear.
         </p>
     </div>
-</body>
-</html>
+<?= $this->endSection() ?>

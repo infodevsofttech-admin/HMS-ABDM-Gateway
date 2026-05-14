@@ -1,10 +1,16 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Scan &amp; Share Queue - M1 Module</title>
-    <style>
+<?= $this->extend('layout/admin_layout') ?>
+<?php $title = 'OPD Token Queue'; ?>
+
+<?= $this->section('content') ?>
+
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-ticket"></i> Scan &amp; Share — OPD Token Queue <small>Patients who scanned today's facility QR</small></h3>
+    </div>
+</div>
+<div class="clearfix"></div>
+
+<style>
         body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; color: #111827; }
         h1 { margin-bottom: 4px; }
         .subtitle { color: #6b7280; font-size: 13px; margin-bottom: 20px; }
@@ -35,19 +41,16 @@
             .toolbar, .no-print { display: none; }
             body { margin: 0; background: #fff; }
         }
-    </style>
-</head>
-<body>
-    <?php
+</style>
+
+<?php
     $tokens = $tokens ?? [];
     $date   = $date ?? date('Y-m-d');
     $total  = count($tokens);
     $served = count(array_filter($tokens, fn($t) => ($t->status ?? '') === 'SERVED'));
     ?>
 
-    <p><a href="/admin/m1">← Back to M1 Suite</a></p>
-    <h1>Scan &amp; Share — OPD Token Queue</h1>
-    <p class="subtitle">Patients who scanned the facility QR in their ABHA app today appear here.</p>
+
 
     <div class="toolbar">
         <form method="get">
@@ -125,5 +128,4 @@
             setTimeout(() => location.reload(), 30000);
         }
     </script>
-</body>
-</html>
+<?= $this->endSection() ?>

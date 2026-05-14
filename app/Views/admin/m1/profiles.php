@@ -1,10 +1,16 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ABHA Patient Master</title>
-    <style>
+<?= $this->extend('layout/admin_layout') ?>
+<?php $title = 'ABHA Patient Master'; ?>
+
+<?= $this->section('content') ?>
+
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-database"></i> Patient Master <small>All verified ABHA profiles</small></h3>
+    </div>
+</div>
+<div class="clearfix"></div>
+
+<style>
         body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; color: #111827; }
         h1 { margin-bottom: 4px; }
         .subtitle { color: #6b7280; font-size: 14px; margin-bottom: 20px; }
@@ -29,17 +35,14 @@
         .count { font-size: 13px; color: #6b7280; }
         .ok  { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; }
         .err { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; }
-    </style>
-</head>
-<body>
-    <?php
+</style>
+
+<?php
     $profiles = $profiles ?? [];
     $count    = count($profiles);
     ?>
 
-    <p><a href="/admin/m1">← Back to M1 Suite</a></p>
-    <h1>ABHA Patient Master</h1>
-    <p class="subtitle">Verified ABHA profiles collected via ABDM Milestone 1 OTP flow.</p>
+
 
     <?php if (!empty($message)): ?>
         <div class="ok"><?= esc((string) $message) ?></div>
@@ -126,5 +129,4 @@
         </table>
         <?php endif; ?>
     </div>
-</body>
-</html>
+<?= $this->endSection() ?>

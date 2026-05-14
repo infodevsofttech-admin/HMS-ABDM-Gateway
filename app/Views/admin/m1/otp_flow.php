@@ -1,10 +1,17 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ABHA OTP Flow - M1 Module</title>
-    <style>
+<?= $this->extend('layout/admin_layout') ?>
+<?php $title = 'Create ABHA (OTP Flow)'; ?>
+
+<?= $this->section('content') ?>
+
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-plus-circle"></i> Create ABHA <small>Aadhaar OTP Guided Flow</small></h3>
+    </div>
+</div>
+<div class="clearfix"></div>
+
+<div class="row"><div class="col-md-8 col-md-offset-2">
+<style>
         body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; color: #111827; max-width: 600px; }
         .card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
         .stack { display: grid; gap: 16px; }
@@ -45,10 +52,10 @@
         .badge-inactive { background: #fef9c3; color: #713f12; }
         .photo-wrap { text-align: center; margin-bottom: 14px; }
         .photo-wrap img { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; border: 1px solid #e5e7eb; }
-    </style>
-</head>
-<body>
-    <?php
+    .stack { display: grid; gap: 16px; }
+</style>
+
+<?php
     $step          = (int) ($step ?? 1);
     $txnId         = (string) ($txnId ?? '');
     $otpType       = (string) ($otpType ?? 'aadhaar');
@@ -60,8 +67,7 @@
     $abhaNumber    = $abhaNumber ?? '';
     ?>
 
-    <p><a href="/admin/m1">← Back to M1 Suite</a></p>
-    <h1>Create ABHA (OTP Flow)</h1>
+
 
     <div class="steps">
         <div class="step <?= $step === 1 ? 'active' : ($step > 1 ? 'done' : '') ?>">1 · Enter ID</div>
@@ -237,5 +243,6 @@
             document.getElementById('abha_address').value = addr;
         }
     </script>
-</body>
-</html>
+</div></div>
+
+<?= $this->endSection() ?>

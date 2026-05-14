@@ -1,10 +1,17 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ABHA Verification Flow</title>
-    <style>
+<?= $this->extend('layout/admin_layout') ?>
+<?php $title = 'ABHA Verification Flow'; ?>
+
+<?= $this->section('content') ?>
+
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-check-circle"></i> ABHA Verification <small>Verify existing ABHA holders</small></h3>
+    </div>
+</div>
+<div class="clearfix"></div>
+
+<div class="row"><div class="col-md-8 col-md-offset-2">
+<style>
         body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; color: #111827; max-width: 620px; }
         h1 { margin-bottom: 4px; }
         .subtitle { color: #6b7280; font-size: 14px; margin-bottom: 20px; }
@@ -44,10 +51,9 @@
         .method-opt .desc  { font-size: 12px; color: #6b7280; }
         .dl-btn { display: inline-block; margin-top: 14px; background: #059669; color: #fff; padding: 9px 18px; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none; }
         .dl-btn:hover { background: #047857; }
-    </style>
-</head>
-<body>
-    <?php
+</style>
+
+<?php
     $step          = $step ?? '1';
     $txnId         = $txnId ?? '';
     $verifyMethod  = $verifyMethod ?? 'abha-abdm';
@@ -57,9 +63,7 @@
     $xToken        = $xToken ?? '';
     ?>
 
-    <p><a href="/admin/m1">← Back to M1 Suite</a></p>
-    <h1>ABHA Verification</h1>
-    <p class="subtitle">Verify existing ABHA holders at hospital reception using ABHA Number or Mobile OTP.</p>
+
 
     <?php if (!empty($message)): ?>
         <div class="ok"><?= esc((string) $message) ?></div>
@@ -287,5 +291,6 @@
     </div>
     <?php endif; ?>
 
-</body>
-</html>
+</div></div>
+
+<?= $this->endSection() ?>
