@@ -69,6 +69,10 @@ $routes->group('admin', ['filter' => 'auth'], static function($routes) {
         $routes->post('m1/otp-verify', 'Admin::m1OtpVerifyPost');
         $routes->get('m1/abha-profiles', 'Admin::m1AbhaProfiles');
         $routes->head('m1/abha-profiles', 'Admin::m1AbhaProfiles');
+        $routes->get('m1/verify-flow', 'Admin::m1VerifyFlow');
+        $routes->post('m1/verify-otp-request', 'Admin::m1VerifyOtpRequestPost');
+        $routes->post('m1/verify-otp-confirm', 'Admin::m1VerifyOtpConfirmPost');
+        $routes->post('m1/verify-user-select', 'Admin::m1VerifyUserSelectPost');
         $routes->get('m1/fetch-token', 'Admin::fetchAbdmToken');
     $routes->get('dashboard', 'Admin::dashboard');
     $routes->get('hospitals', 'Admin::hospitals');

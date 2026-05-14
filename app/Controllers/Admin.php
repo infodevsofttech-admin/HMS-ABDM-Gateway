@@ -429,6 +429,199 @@ class Admin extends BaseController
         ]);
     }
 
+    // -----------------------------------------------------------------------
+    // ABHA Verification Flow (for existing ABHA holders)
+    // -----------------------------------------------------------------------
+
+    public function m1VerifyFlow()
+    {
+        return view('admin/m1/verify_flow', [
+            'error'         => session()->getFlashdata('error'),
+            'message'       => session()->getFlashdata('message'),
+            'step'          => (string) (session()->getFlashdata('verify_step') ?: '1'),
+            'txnId'         => (string) (session()->getFlashdata('verify_txn_id') ?: ''),
+            'verifyMethod'  => (string) (session()->getFlashdata('verify_method') ?: 'abha-abdm'),
+            'loginId'       => (string) (session()->getFlashdata('verify_login_id') ?: ''),
+            'abhaList'      => (array)  (session()->getFlashdata('verify_abha_list') ?: []),
+            'resultProfile' => session()->getFlashdata('verify_result_profile'),
+            'xToken'        => (string) (session()->getFlashdata('verify_x_token') ?: ''),
+        ]);
+    }
+
+    public function m1VerifyOtpRequestPost()
+    {
+        $method  = trim((string) $this->request->getPost('verify_method'));
+        $loginId = trim((string) $this->request->getPost('login_id'));
+
+        if (!in_array($method, ['abha-abdm', 'abha-aadhaar', 'mobile'], true)) {
+            $method = 'abha-abdm';
+        }
+
+        if ($loginId === '') {
+            return redirect()->to('/admin/m1/verify-flow')
+                ->with('error', 'Please enter ' . ($method === 'mobile' ? 'mobile number.' : 'ABHA number.'))
+                ->with('verify_method', $method)
+                ->with('verify_step', '1');
+        }
+
+        try {
+            $result = $this->callAbdmLoginRequestOtp($method, $loginId);
+            $txnId  = (string) ($result['decoded']['txnId'] ?? '');
+
+            return redirect()->to('/admin/m1/verify-flow')
+                ->with('message', 'OTP sent successfully. Enter the OTP you received.')
+                ->with('verify_step', '2')
+                ->with('verify_txn_id', $txnId)
+                ->with('verify_method', $method)
+                ->with('verify_login_id', $loginId);
+
+        } catch (\Throwable $e) {
+            return redirect()->to('/admin/m1/verify-flow')
+                ->with('error', 'Failed to send OTP: ' . $e->getMessage())
+                ->with('verify_method', $method)
+                ->with('verify_login_id', $loginId)
+                ->with('verify_step', '1');
+        }
+    }
+
+    public function m1VerifyOtpConfirmPost()
+    {
+        $method  = trim((string) $this->request->getPost('verify_method'));
+        $txnId   = trim((string) $this->request->getPost('txn_id'));
+        $otp     = trim((string) $this->request->getPost('otp'));
+        $loginId = trim((string) $this->request->getPost('login_id'));
+
+        if (!in_array($method, ['abha-abdm', 'abha-aadhaar', 'mobile'], true)) {
+            $method = 'abha-abdm';
+        }
+
+        if ($otp === '') {
+            return redirect()->to('/admin/m1/verify-flow')
+                ->with('error', 'OTP is required.')
+                ->with('verify_step', '2')
+                ->with('verify_txn_id', $txnId)
+                ->with('verify_method', $method)
+                ->with('verify_login_id', $loginId);
+        }
+
+        try {
+            $result  = $this->callAbdmLoginVerifyOtp($method, $txnId, $otp);
+            $decoded = $result['decoded'];
+
+            // Mobile method may return a list of linked ABHA numbers to select from
+            $abhaList = $decoded['accounts'] ?? $decoded['ABHANumbers'] ?? null;
+            if ($method === 'mobile' && is_array($abhaList) && count($abhaList) > 1) {
+                $newTxnId = (string) ($decoded['txnId'] ?? $txnId);
+                return redirect()->to('/admin/m1/verify-flow')
+                    ->with('message', 'Multiple ABHA numbers found on this mobile. Please select one.')
+                    ->with('verify_step', '2b')
+                    ->with('verify_txn_id', $newTxnId)
+                    ->with('verify_method', $method)
+                    ->with('verify_login_id', $loginId)
+                    ->with('verify_abha_list', $abhaList);
+            }
+
+            // Extract X-Token (user-scoped token for this ABHA account)
+            $xToken = (string) ($decoded['token'] ?? $decoded['xToken'] ?? $decoded['tokens']['token'] ?? '');
+            $profile = [];
+
+            if ($xToken !== '') {
+                try {
+                    $profResult = $this->fetchAbdmProfileWithXToken($xToken);
+                    $profile    = $profResult['decoded']['profile']
+                        ?? $profResult['decoded']['ABHAProfile']
+                        ?? $profResult['decoded'];
+                } catch (\Throwable $ex) {
+                    log_message('warning', 'Verify: profile fetch skipped: ' . $ex->getMessage());
+                    $profile = is_array($decoded['ABHAProfile'] ?? null) ? $decoded['ABHAProfile'] : $decoded;
+                }
+            }
+
+            // Save to patient master
+            $profileData = !empty($profile) ? $profile : $decoded;
+            $abhaNumber  = (string) ($profileData['ABHANumber'] ?? $profileData['abhaNumber'] ?? $loginId);
+            if (!empty($profileData)) {
+                try {
+                    $this->saveAbhaProfile($profileData, $abhaNumber, '');
+                } catch (\Throwable $ex) {
+                    log_message('warning', 'Verify: profile save skipped: ' . $ex->getMessage());
+                }
+            }
+
+            return redirect()->to('/admin/m1/verify-flow')
+                ->with('message', 'ABHA verified successfully.')
+                ->with('verify_result_profile', $profileData)
+                ->with('verify_x_token', $xToken)
+                ->with('verify_step', '3');
+
+        } catch (\Throwable $e) {
+            return redirect()->to('/admin/m1/verify-flow')
+                ->with('error', 'OTP verification failed: ' . $e->getMessage())
+                ->with('verify_step', '2')
+                ->with('verify_txn_id', $txnId)
+                ->with('verify_method', $method)
+                ->with('verify_login_id', $loginId);
+        }
+    }
+
+    public function m1VerifyUserSelectPost()
+    {
+        $txnId      = trim((string) $this->request->getPost('txn_id'));
+        $abhaNumber = trim((string) $this->request->getPost('abha_number'));
+        $loginId    = trim((string) $this->request->getPost('login_id'));
+
+        if ($abhaNumber === '') {
+            return redirect()->to('/admin/m1/verify-flow')
+                ->with('error', 'Please select an ABHA number.')
+                ->with('verify_step', '2b')
+                ->with('verify_txn_id', $txnId)
+                ->with('verify_method', 'mobile')
+                ->with('verify_login_id', $loginId);
+        }
+
+        try {
+            $result  = $this->callAbdmLoginVerifyUser($txnId, $abhaNumber);
+            $decoded = $result['decoded'];
+            $xToken  = (string) ($decoded['token'] ?? $decoded['xToken'] ?? $decoded['tokens']['token'] ?? '');
+            $profile = [];
+
+            if ($xToken !== '') {
+                try {
+                    $profResult = $this->fetchAbdmProfileWithXToken($xToken);
+                    $profile    = $profResult['decoded']['profile']
+                        ?? $profResult['decoded']['ABHAProfile']
+                        ?? $profResult['decoded'];
+                } catch (\Throwable $ex) {
+                    log_message('warning', 'Verify user-select: profile fetch skipped: ' . $ex->getMessage());
+                }
+            }
+
+            $profileData = !empty($profile) ? $profile : $decoded;
+            $abhaNum     = (string) ($profileData['ABHANumber'] ?? $profileData['abhaNumber'] ?? $abhaNumber);
+            if (!empty($profileData)) {
+                try {
+                    $this->saveAbhaProfile($profileData, $abhaNum, '');
+                } catch (\Throwable $ex) {
+                    log_message('warning', 'Verify user-select: profile save skipped: ' . $ex->getMessage());
+                }
+            }
+
+            return redirect()->to('/admin/m1/verify-flow')
+                ->with('message', 'ABHA verified successfully.')
+                ->with('verify_result_profile', $profileData)
+                ->with('verify_x_token', $xToken)
+                ->with('verify_step', '3');
+
+        } catch (\Throwable $e) {
+            return redirect()->to('/admin/m1/verify-flow')
+                ->with('error', 'Failed to confirm ABHA selection: ' . $e->getMessage())
+                ->with('verify_step', '2b')
+                ->with('verify_txn_id', $txnId)
+                ->with('verify_method', 'mobile')
+                ->with('verify_login_id', $loginId);
+        }
+    }
+
     public function runM1Test()
     {
         if (!$this->request->is('post')) {
@@ -801,6 +994,137 @@ class Admin extends BaseController
         }
 
         return $this->response->setJSON(['token' => $token, 'expires_in' => (int) ($decoded['expiresIn'] ?? 0)]);
+    }
+
+    // -----------------------------------------------------------------------
+    // ABHA Verification private helpers
+    // -----------------------------------------------------------------------
+
+    private function callAbdmLoginRequestOtp(string $method, string $loginId): array
+    {
+        $abdmToken  = $this->fetchAbdmTokenForAdmin();
+        $publicKey  = $this->fetchAbdmPublicKey($abdmToken);
+        $encLoginId = $this->encryptForAbdm($loginId, $publicKey);
+        $requestId  = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0x0fff)|0x4000, mt_rand(0,0x3fff)|0x8000, mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff));
+        $timestamp  = gmdate('Y-m-d\TH:i:s.000\Z');
+
+        switch ($method) {
+            case 'abha-aadhaar':
+                $body = ['scope' => ['abha-login', 'aadhaar-verify'], 'loginHint' => 'abha-number', 'loginId' => $encLoginId, 'otpSystem' => 'aadhaar'];
+                break;
+            case 'mobile':
+                $body = ['scope' => ['abha-login', 'mobile-verify'], 'loginHint' => 'mobile', 'loginId' => $encLoginId, 'otpSystem' => 'abdm'];
+                break;
+            default: // 'abha-abdm'
+                $body = ['scope' => ['abha-login', 'mobile-verify'], 'loginHint' => 'abha-number', 'loginId' => $encLoginId, 'otpSystem' => 'abdm'];
+        }
+
+        return $this->abdmPost('https://abhasbx.abdm.gov.in/abha/api/v3/profile/login/request/otp', $body, $abdmToken, $requestId, $timestamp);
+    }
+
+    private function callAbdmLoginVerifyOtp(string $method, string $txnId, string $otp): array
+    {
+        $abdmToken = $this->fetchAbdmTokenForAdmin();
+        $publicKey = $this->fetchAbdmPublicKey($abdmToken);
+        $encOtp    = $this->encryptForAbdm($otp, $publicKey);
+        $scope     = ($method === 'abha-aadhaar') ? ['abha-login', 'aadhaar-verify'] : ['abha-login', 'mobile-verify'];
+
+        $body = [
+            'scope'    => $scope,
+            'authData' => ['authMethods' => ['otp'], 'otp' => ['txnId' => $txnId, 'otpValue' => $encOtp]],
+        ];
+
+        return $this->abdmPost(
+            'https://abhasbx.abdm.gov.in/abha/api/v3/profile/login/verify',
+            $body, $abdmToken,
+            sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0x0fff)|0x4000, mt_rand(0,0x3fff)|0x8000, mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff)),
+            gmdate('Y-m-d\TH:i:s.000\Z')
+        );
+    }
+
+    private function callAbdmLoginVerifyUser(string $txnId, string $abhaNumber): array
+    {
+        $abdmToken = $this->fetchAbdmTokenForAdmin();
+        $body      = ['ABHANumber' => $abhaNumber, 'txnId' => $txnId];
+
+        return $this->abdmPost(
+            'https://abhasbx.abdm.gov.in/abha/api/v3/profile/login/verify/user',
+            $body, $abdmToken,
+            sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0x0fff)|0x4000, mt_rand(0,0x3fff)|0x8000, mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff)),
+            gmdate('Y-m-d\TH:i:s.000\Z')
+        );
+    }
+
+    private function fetchAbdmProfileWithXToken(string $xToken): array
+    {
+        $abdmToken = $this->fetchAbdmTokenForAdmin();
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => 'https://abhasbx.abdm.gov.in/abha/api/v3/profile/account',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_HTTPHEADER     => [
+                'Accept: application/json',
+                'Authorization: Bearer ' . $abdmToken,
+                'X-Token: Bearer ' . $xToken,
+                'REQUEST-ID: ' . sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0x0fff)|0x4000, mt_rand(0,0x3fff)|0x8000, mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff)),
+                'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+            ],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+        $raw      = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr !== '') {
+            throw new \RuntimeException('ABHA profile fetch failed: ' . $curlErr);
+        }
+        $decoded = json_decode((string) $raw, true);
+        if ($httpCode >= 400) {
+            $msg = is_array($decoded) ? ($decoded['message'] ?? 'Error ' . $httpCode) : 'HTTP ' . $httpCode;
+            throw new \RuntimeException(is_string($msg) ? $msg : json_encode($msg));
+        }
+        return ['statusCode' => $httpCode, 'decoded' => is_array($decoded) ? $decoded : ['raw' => (string) $raw]];
+    }
+
+    /**
+     * Shared CURL POST helper for ABDM v3 API calls.
+     */
+    private function abdmPost(string $url, array $body, string $abdmToken, string $requestId, string $timestamp): array
+    {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($body),
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Authorization: Bearer ' . $abdmToken,
+                'REQUEST-ID: ' . $requestId,
+                'TIMESTAMP: ' . $timestamp,
+            ],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+        $raw      = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr !== '') {
+            throw new \RuntimeException('ABDM connection failed: ' . $curlErr);
+        }
+        $decoded = json_decode((string) $raw, true);
+        if ($httpCode >= 400) {
+            $msg = is_array($decoded)
+                ? ($decoded['message'] ?? (is_array($decoded['error'] ?? null) ? ($decoded['error']['message'] ?? 'ABDM error') : ($decoded['error'] ?? 'ABDM API error')))
+                : 'ABDM API error (HTTP ' . $httpCode . ')';
+            throw new \RuntimeException(is_string($msg) ? $msg : json_encode($msg));
+        }
+        return ['statusCode' => $httpCode, 'body' => (string) $raw, 'decoded' => is_array($decoded) ? $decoded : ['raw' => (string) $raw]];
     }
 
     private function callGatewayEndpoint(string $method, string $path, array $payload, string $token): array

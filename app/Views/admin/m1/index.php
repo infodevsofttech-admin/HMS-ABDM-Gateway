@@ -19,9 +19,10 @@
         <div class="card">
             <h2>ABHA APIs</h2>
             <ul>
-                <li><a href="/admin/m1/otp-flow">ABHA OTP Guided Flow (Aadhaar &amp; Mobile)</a></li>
+                <li><a href="/admin/m1/otp-flow">ABHA OTP Guided Flow (Aadhaar &amp; Mobile)</a> — <span style="font-size:12px;color:#6b7280;">Create new ABHA</span></li>
+                <li><a href="/admin/m1/verify-flow">ABHA Verification Flow</a> — <span style="font-size:12px;color:#6b7280;">Verify existing ABHA holders (ABHA Number / Mobile OTP)</span></li>
                 <li><a href="/admin/m1/abha-validate">ABHA Validate by ID (quick lookup)</a></li>
-                <li><a href="/admin/m1/abha-profiles">Saved ABHA Profiles</a></li>
+                <li><a href="/admin/m1/abha-profiles">Saved ABHA Profiles (Patient Master)</a></li>
             </ul>
         </div>
         <div class="card">
