@@ -81,17 +81,17 @@
         <?php if ($step <= 1): ?>
         <!-- ── Step 1 ── -->
         <div class="card">
-            <p class="note">Select the OTP method, enter the Aadhaar or mobile number, and click <strong>Send OTP</strong>.</p>
+            <p class="note">
+                Enter the patient's <strong>12-digit Aadhaar number</strong>. An OTP will be sent to the
+                mobile number registered with that Aadhaar. <em>To create a new ABHA, Aadhaar is required.</em>
+            </p>
             <form method="post" action="/admin/m1/otp-generate">
                 <?= csrf_field() ?>
-                <label>OTP Type</label>
-                <div class="radio-row">
-                    <label><input type="radio" name="otp_type" value="aadhaar" <?= $otpType !== 'mobile' ? 'checked' : '' ?>> Aadhaar</label>
-                    <label><input type="radio" name="otp_type" value="mobile"  <?= $otpType === 'mobile'  ? 'checked' : '' ?>> Mobile</label>
-                </div>
-                <label for="otp_input" id="input_label">Aadhaar Number</label>
+                <input type="hidden" name="otp_type" value="aadhaar">
+                <label for="otp_input">Aadhaar Number <span>(12 digits)</span></label>
                 <input type="text" id="otp_input" name="otp_input" maxlength="12"
-                       placeholder="999941057058" value="<?= esc($otpInput) ?>" required />
+                       placeholder="e.g. 999941057058" value="<?= esc($otpInput) ?>" required
+                       pattern="[0-9]{12}" title="12-digit Aadhaar number" inputmode="numeric" />
                 <label for="mode">Mode</label>
                 <select id="mode" name="mode">
                     <option value="sandbox">Sandbox</option>
@@ -104,20 +104,21 @@
         <?php elseif ($step === 2): ?>
         <!-- ── Step 2 ── -->
         <div class="card">
-            <p class="note">OTP sent for <strong><?= esc($otpType === 'mobile' ? 'Mobile' : 'Aadhaar') ?></strong>
-               <code><?= esc($otpInput ?: '—') ?></code>. Enter the 6-digit OTP below.</p>
+            <p class="note">
+                OTP sent to the mobile linked with Aadhaar <strong><?= esc($otpInput ?: '—') ?></strong>.
+                Enter the 6-digit OTP and the patient's mobile number below.
+            </p>
             <form method="post" action="/admin/m1/otp-verify">
                 <?= csrf_field() ?>
-                <input type="hidden" name="otp_type"  value="<?= esc($otpType) ?>">
+                <input type="hidden" name="otp_type"  value="aadhaar">
                 <input type="hidden" name="otp_input" value="<?= esc($otpInput) ?>">
-                <label for="txn_id">Transaction ID (txnId)</label>
+                <label for="txn_id">Transaction ID <span>(auto-filled)</span></label>
                 <input type="text" id="txn_id" name="txn_id" value="<?= esc($txnId) ?>"
                        placeholder="auto-filled from OTP response" />
-                <?php if ($otpType === 'aadhaar'): ?>
-                <label for="mobile">Primary Mobile Number <span>(for ABHA communication)</span></label>
-                <input type="tel" id="mobile" name="mobile" maxlength="10" placeholder="10-digit mobile number" required />
-                <?php endif; ?>
-                <label for="otp">OTP</label>
+                <label for="mobile">Patient's Mobile Number <span>(10 digits, for ABHA communication)</span></label>
+                <input type="tel" id="mobile" name="mobile" maxlength="10" placeholder="10-digit mobile number"
+                       pattern="[0-9]{10}" title="10-digit mobile number" inputmode="numeric" required />
+                <label for="otp">OTP <span>(received on Aadhaar-registered mobile)</span></label>
                 <input type="text" id="otp" name="otp" maxlength="6" placeholder="123456" required autofocus />
                 <label for="mode">Mode</label>
                 <select id="mode" name="mode">
@@ -228,23 +229,7 @@
     </div>
 
     <script>
-        // Step 1: update label when OTP type changes
-        const radios = document.querySelectorAll('input[name="otp_type"]');
-        const inputLabel = document.getElementById('input_label');
-        const otpInput   = document.getElementById('otp_input');
-        if (radios && inputLabel && otpInput) {
-            radios.forEach(r => r.addEventListener('change', () => {
-                if (r.value === 'mobile') {
-                    inputLabel.textContent = 'Mobile Number';
-                    otpInput.placeholder   = '9999999999';
-                    otpInput.maxLength     = 10;
-                } else {
-                    inputLabel.textContent = 'Aadhaar Number';
-                    otpInput.placeholder   = '999941057058';
-                    otpInput.maxLength     = 12;
-                }
-            }));
-        }
+        // Step 3: chip selection fills the text input
         // Step 3: chip selection fills the text input
         function selectChip(el, addr) {
             document.querySelectorAll('.addr-chip').forEach(c => c.classList.remove('selected'));
