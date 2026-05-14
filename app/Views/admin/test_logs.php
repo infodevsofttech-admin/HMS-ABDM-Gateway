@@ -38,11 +38,11 @@
                     <td><?= esc((string) $log->created_at) ?></td>
                     <td><?= esc((string) ($log->hospital_name ?? 'N/A')) ?></td>
                     <td><?= esc((string) ($log->username ?? 'N/A')) ?></td>
-                    <td><?= esc((string) ($log->event_type ?? '')) ?></td>
-                    <td><?= esc((string) $log->endpoint) ?></td>
-                    <td><?= esc((string) $log->http_status) ?></td>
-                    <td class="small"><pre><?= esc((string) $log->request_payload) ?></pre></td>
-                    <td class="small"><pre><?= esc((string) $log->response_payload) ?></pre></td>
+                    <td><?= esc((string) ($log->event_type ?? $log->test_type ?? '')) ?></td>
+                    <td><?= esc((string) ($log->endpoint ?? '—')) ?></td>
+                    <td><?= esc((string) ($log->http_status ?? $log->status ?? '')) ?></td>
+                    <td class="small"><pre><?= esc((string) ($log->request_payload ?? $log->test_data ?? '')) ?></pre></td>
+                    <td class="small"><pre><?= esc((string) ($log->response_payload ?? $log->response ?? '')) ?></pre></td>
                 </tr>
             <?php endforeach; ?>
         </tbody>

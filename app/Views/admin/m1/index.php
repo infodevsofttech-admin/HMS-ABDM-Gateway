@@ -19,7 +19,8 @@
         <div class="card">
             <h2>ABHA APIs</h2>
             <ul>
-                <li><a href="/admin/m1/abha-validate">ABHA Validate (with OTP & Save)</a></li>
+                <li><a href="/admin/m1/otp-flow">ABHA OTP Guided Flow (Aadhaar &amp; Mobile)</a></li>
+                <li><a href="/admin/m1/abha-validate">ABHA Validate by ID (quick lookup)</a></li>
                 <li><a href="/admin/m1/abha-profiles">Saved ABHA Profiles</a></li>
             </ul>
         </div>

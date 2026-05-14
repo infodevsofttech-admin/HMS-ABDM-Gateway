@@ -252,10 +252,170 @@ class Admin extends BaseController
 
     public function m1AbhaValidateOtp()
     {
-        return redirect()->to('/admin/m1/abha-validate')->with(
-            'error',
-            'OTP verification is not exposed as a dedicated validate endpoint in the current gateway. Use the Aadhaar or Mobile OTP M1 endpoints from the raw console until the full guided OTP flow is wired.'
-        );
+        return redirect()->to('/admin/m1/otp-flow');
+    }
+
+    // ── Guided OTP Flow (Aadhaar / Mobile) ──────────────────────────────────
+
+    public function m1OtpFlow()
+    {
+        return view('admin/m1/otp_flow', [
+            'error'         => session()->getFlashdata('error'),
+            'message'       => session()->getFlashdata('message'),
+            'step'          => (int) (session()->getFlashdata('otp_step') ?: 1),
+            'txnId'         => (string) (session()->getFlashdata('otp_txn_id') ?: ''),
+            'otpType'       => (string) (session()->getFlashdata('otp_type') ?: 'aadhaar'),
+            'otpInput'      => (string) (session()->getFlashdata('otp_input') ?: ''),
+            'resultProfile' => session()->getFlashdata('otp_result_profile'),
+        ]);
+    }
+
+    public function m1OtpGeneratePost()
+    {
+        $otpType = $this->request->getPost('otp_type') === 'mobile' ? 'mobile' : 'aadhaar';
+        $input   = trim((string) $this->request->getPost('otp_input'));
+        $mode    = strtolower(trim((string) $this->request->getPost('mode')));
+        $token   = $this->resolveGatewayToken();
+
+        if ($input === '') {
+            return redirect()->to('/admin/m1/otp-flow')
+                ->with('error', 'Please enter ' . ($otpType === 'mobile' ? 'mobile number.' : 'Aadhaar number.'))
+                ->with('otp_type', $otpType)
+                ->with('otp_step', 1);
+        }
+
+        if ($token === '') {
+            return redirect()->to('/admin/m1/otp-flow')
+                ->with('error', 'Gateway bearer token is not configured (GATEWAY_BEARER_TOKEN).')
+                ->with('otp_type', $otpType)
+                ->with('otp_step', 1);
+        }
+
+        if (!in_array($mode, ['sandbox', 'live'], true)) {
+            $mode = 'sandbox';
+        }
+
+        $path        = $otpType === 'mobile' ? 'api/v3/abha/mobile/generate-otp' : 'api/v3/abha/aadhaar/generate-otp';
+        $fieldName   = $otpType === 'mobile' ? 'mobile' : 'aadhaar';
+        $payload     = [$fieldName => $input];
+        $reqPayload  = ['mode' => $mode, 'payload' => $payload, 'otp_type' => $otpType, 'token_source' => 'server'];
+
+        try {
+            $response = $this->callGatewayEndpoint('POST', $path, $payload, $token);
+            $decoded  = $response['decoded'];
+            $txnId    = (string) ($decoded['txnId'] ?? $decoded['data']['txnId'] ?? $decoded['transaction_id'] ?? '');
+
+            $this->storeM1Log(
+                'abdm.abha.' . $otpType . '.generate_otp',
+                '/' . $path,
+                $response['statusCode'],
+                $reqPayload,
+                $decoded
+            );
+
+            return redirect()->to('/admin/m1/otp-flow')
+                ->with('message', 'OTP sent. Enter the OTP you received to continue.')
+                ->with('otp_step', 2)
+                ->with('otp_txn_id', $txnId)
+                ->with('otp_type', $otpType)
+                ->with('otp_input', $input);
+
+        } catch (\Throwable $e) {
+            $this->storeM1Log(
+                'abdm.abha.' . $otpType . '.generate_otp',
+                '/' . $path,
+                500,
+                $reqPayload,
+                ['error' => $e->getMessage()]
+            );
+
+            return redirect()->to('/admin/m1/otp-flow')
+                ->with('error', 'Failed to generate OTP: ' . $e->getMessage())
+                ->with('otp_type', $otpType)
+                ->with('otp_step', 1);
+        }
+    }
+
+    public function m1OtpVerifyPost()
+    {
+        $otpType  = $this->request->getPost('otp_type') === 'mobile' ? 'mobile' : 'aadhaar';
+        $txnId    = trim((string) $this->request->getPost('txn_id'));
+        $otp      = trim((string) $this->request->getPost('otp'));
+        $otpInput = trim((string) $this->request->getPost('otp_input'));
+        $mode     = strtolower(trim((string) $this->request->getPost('mode')));
+        $token    = $this->resolveGatewayToken();
+
+        if ($otp === '') {
+            return redirect()->to('/admin/m1/otp-flow')
+                ->with('error', 'OTP is required.')
+                ->with('otp_step', 2)
+                ->with('otp_txn_id', $txnId)
+                ->with('otp_type', $otpType)
+                ->with('otp_input', $otpInput);
+        }
+
+        if ($token === '') {
+            return redirect()->to('/admin/m1/otp-flow')->with('error', 'Gateway bearer token is not configured.');
+        }
+
+        if (!in_array($mode, ['sandbox', 'live'], true)) {
+            $mode = 'sandbox';
+        }
+
+        $path       = $otpType === 'mobile' ? 'api/v3/abha/mobile/verify-otp' : 'api/v3/abha/aadhaar/verify-otp';
+        $payload    = ['txnId' => $txnId, 'otp' => $otp];
+        $reqPayload = ['mode' => $mode, 'payload' => $payload, 'otp_type' => $otpType, 'token_source' => 'server'];
+
+        try {
+            $response   = $this->callGatewayEndpoint('POST', $path, $payload, $token);
+            $decoded    = $response['decoded'];
+            $profileData = is_array($decoded['data'] ?? null) ? $decoded['data'] : $decoded;
+            $requestId  = (string) ($decoded['request_id'] ?? '');
+
+            $profileId = null;
+            $abhaNumber = (string) ($profileData['abhaNumber'] ?? $profileData['abha_id'] ?? $profileData['ABHANumber'] ?? '');
+            if ($abhaNumber !== '' || $profileData !== []) {
+                try {
+                    $profileId = $this->saveAbhaProfile($profileData, $abhaNumber, $requestId);
+                } catch (\Throwable $ex) {
+                    log_message('warning', 'OTP verify: profile save skipped: ' . $ex->getMessage());
+                }
+            }
+
+            $this->storeM1Log(
+                'abdm.abha.' . $otpType . '.verify_otp',
+                '/' . $path,
+                $response['statusCode'],
+                $reqPayload,
+                ['profile_id' => $profileId, 'response' => $decoded]
+            );
+
+            $msg = 'OTP verified successfully.';
+            if ($profileId !== null) {
+                $msg .= ' ABHA profile saved (ID: ' . $profileId . ').';
+            }
+
+            return redirect()->to('/admin/m1/otp-flow')
+                ->with('message', $msg)
+                ->with('otp_result_profile', $profileData)
+                ->with('otp_step', 3);
+
+        } catch (\Throwable $e) {
+            $this->storeM1Log(
+                'abdm.abha.' . $otpType . '.verify_otp',
+                '/' . $path,
+                500,
+                $reqPayload,
+                ['error' => $e->getMessage()]
+            );
+
+            return redirect()->to('/admin/m1/otp-flow')
+                ->with('error', 'OTP verification failed: ' . $e->getMessage())
+                ->with('otp_step', 2)
+                ->with('otp_txn_id', $txnId)
+                ->with('otp_type', $otpType)
+                ->with('otp_input', $otpInput);
+        }
     }
 
     public function m1AbhaProfiles()
@@ -375,16 +535,18 @@ class Admin extends BaseController
         $rows[] = ['id', 'request_id', 'hospital_name', 'username', 'event_type', 'endpoint', 'http_status', 'request_payload', 'response_payload', 'created_at'];
 
         foreach ($logs as $log) {
+            $reqPayload = $log->request_payload ?? $log->test_data ?? '';
+            $resPayload = $log->response_payload ?? $log->response ?? '';
             $rows[] = [
                 (string) ($log->id ?? ''),
                 (string) ($log->request_id ?? ''),
                 (string) ($log->hospital_name ?? ''),
                 (string) ($log->username ?? ''),
-                (string) ($log->event_type ?? ''),
+                (string) ($log->event_type ?? $log->test_type ?? ''),
                 (string) ($log->endpoint ?? ''),
-                (string) ($log->http_status ?? ''),
-                is_string($log->request_payload ?? null) ? $log->request_payload : json_encode($log->request_payload),
-                is_string($log->response_payload ?? null) ? $log->response_payload : json_encode($log->response_payload),
+                (string) ($log->http_status ?? $log->status ?? ''),
+                is_string($reqPayload) ? $reqPayload : json_encode($reqPayload),
+                is_string($resPayload) ? $resPayload : json_encode($resPayload),
                 (string) ($log->created_at ?? ''),
             ];
         }
