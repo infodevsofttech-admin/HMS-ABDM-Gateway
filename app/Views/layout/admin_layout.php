@@ -59,6 +59,9 @@
                         <li class="<?= str_contains(current_url(), '/admin/users') ? 'current-page active' : '' ?>">
                             <a href="/admin/users"><i class="fa fa-users"></i> Hospital Users</a>
                         </li>
+                        <li class="<?= str_contains(current_url(), '/admin/registrations') ? 'current-page active' : '' ?>">
+                            <a href="/admin/registrations"><i class="fa fa-user-plus"></i> Registrations</a>
+                        </li>
                     </ul>
                 </div>
                 <div class="menu_section">
@@ -91,6 +94,14 @@
                     <ul class="nav side-menu">
                         <li class="<?= str_contains(current_url(), '/admin/support') ? 'current-page active' : '' ?>">
                             <a href="/admin/support"><i class="fa fa-ticket"></i> Support Tickets</a>
+                        </li>
+                    </ul>
+                </div>
+                <div class="menu_section">
+                    <h3>System</h3>
+                    <ul class="nav side-menu">
+                        <li class="<?= str_contains(current_url(), '/admin/settings') ? 'current-page active' : '' ?>">
+                            <a href="/admin/settings/smtp"><i class="fa fa-envelope-o"></i> SMTP Settings</a>
                         </li>
                     </ul>
                 </div>

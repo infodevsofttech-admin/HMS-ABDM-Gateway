@@ -133,6 +133,16 @@ $routes->group('admin', ['filter' => 'auth'], static function($routes) {
     $routes->post('support/(:num)/reply', 'Admin::supportTicketReplyPost/$1');
     $routes->post('support/(:num)/close', 'Admin::supportTicketClose/$1');
     $routes->get('support/attachment/(:num)', 'Admin::supportAttachmentDownload/$1');
+
+    // Hospital Registrations
+    $routes->get('registrations', 'Admin::hospitalRegistrations');
+    $routes->post('registrations/(:num)/approve', 'Admin::hospitalRegistrationApprove/$1');
+    $routes->post('registrations/(:num)/reject', 'Admin::hospitalRegistrationReject/$1');
+
+    // SMTP / App Settings
+    $routes->get('settings/smtp', 'Admin::smtpSettings');
+    $routes->post('settings/smtp', 'Admin::smtpSettingsSave');
+    $routes->post('settings/smtp/test', 'Admin::smtpSettingsTest');
 });
 
 // ==================== Catch-all ====================

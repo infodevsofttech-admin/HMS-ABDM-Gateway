@@ -13,6 +13,8 @@ use App\Models\HmsCredential;
 use App\Models\SupportTicket;
 use App\Models\SupportMessage;
 use App\Models\SupportAttachment;
+use App\Models\HospitalRegistration;
+use App\Models\AppSetting;
 
 class Admin extends BaseController
 {
@@ -2107,6 +2109,206 @@ class Admin extends BaseController
     {
         $allowed = '<p><br><b><strong><i><em><u><s><strike><ol><ul><li><h1><h2><h3><blockquote><pre><code><span><a>';
         return strip_tags($html, $allowed);
+    }
+
+    // ─── Hospital Registrations ───────────────────────────────────────────────
+
+    public function hospitalRegistrations()
+    {
+        $regModel = new HospitalRegistration();
+        $status   = $this->request->getGet('status') ?? 'pending';
+        $regs     = $regModel->where('status', $status)->orderBy('created_at','DESC')->findAll();
+
+        return view('admin/hospital_registrations', [
+            'registrations'  => $regs,
+            'filterStatus'   => $status,
+            'pendingCount'   => $regModel->countPending(),
+        ]);
+    }
+
+    public function hospitalRegistrationApprove(int $id)
+    {
+        $regModel    = new HospitalRegistration();
+        $reg         = $regModel->find($id);
+
+        if ($reg === null || $reg->status !== 'pending') {
+            return redirect()->to('/admin/registrations')->with('error', 'Registration not found or already processed.');
+        }
+
+        $adminNotes = trim((string) $this->request->getPost('admin_notes'));
+
+        // Create Hospital
+        $hospitalModel = new AbdmHospital();
+        $hospitalId    = $hospitalModel->insert([
+            'hospital_name'  => $reg->hospital_name,
+            'hfr_id'         => $reg->hfr_id ?? '',
+            'gateway_mode'   => 'test',
+            'contact_name'   => $reg->contact_name,
+            'contact_email'  => $reg->contact_email,
+            'contact_phone'  => $reg->contact_phone,
+            'is_active'      => 1,
+        ], true);
+
+        // Create Hospital User
+        $userModel = new AbdmHospitalUser();
+        $apiToken  = bin2hex(random_bytes(64));
+        $userModel->insert([
+            'hospital_id'   => $hospitalId,
+            'username'      => $reg->desired_username,
+            'password_hash' => $reg->password_hash,
+            'api_token'     => $apiToken,
+            'role'          => 'hospital_admin',
+            'is_active'     => 1,
+        ]);
+
+        // Update registration status
+        $regModel->update($id, [
+            'status'      => 'approved',
+            'admin_notes' => $adminNotes ?: null,
+            'reviewed_by' => session()->get('username'),
+            'reviewed_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        // Send approval email
+        $this->sendRegistrationEmail($reg, 'approved');
+
+        return redirect()->to('/admin/registrations')->with('message', 'Registration approved. Hospital account created.');
+    }
+
+    public function hospitalRegistrationReject(int $id)
+    {
+        $regModel = new HospitalRegistration();
+        $reg      = $regModel->find($id);
+
+        if ($reg === null || $reg->status !== 'pending') {
+            return redirect()->to('/admin/registrations')->with('error', 'Registration not found or already processed.');
+        }
+
+        $adminNotes = trim((string) $this->request->getPost('admin_notes'));
+
+        $regModel->update($id, [
+            'status'      => 'rejected',
+            'admin_notes' => $adminNotes ?: null,
+            'reviewed_by' => session()->get('username'),
+            'reviewed_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->sendRegistrationEmail($reg, 'rejected', $adminNotes);
+
+        return redirect()->to('/admin/registrations')->with('message', 'Registration rejected.');
+    }
+
+    private function sendRegistrationEmail(object $reg, string $decision, string $notes = ''): void
+    {
+        $smtp = AppSetting::smtp();
+        if (empty($smtp['smtp_host'])) return; // SMTP not configured
+
+        try {
+            $email = \Config\Services::email();
+            $email->initialize([
+                'protocol'  => 'smtp',
+                'SMTPHost'  => $smtp['smtp_host'] ?? '',
+                'SMTPPort'  => (int)($smtp['smtp_port'] ?? 587),
+                'SMTPUser'  => $smtp['smtp_user'] ?? '',
+                'SMTPPass'  => $smtp['smtp_pass'] ?? '',
+                'SMTPCrypto'=> $smtp['smtp_encryption'] ?? 'tls',
+                'mailType'  => 'html',
+                'charset'   => 'utf-8',
+            ]);
+
+            $fromEmail = $smtp['smtp_from_email'] ?? $smtp['smtp_user'] ?? '';
+            $fromName  = $smtp['smtp_from_name'] ?? 'ABDM Gateway';
+
+            $email->setFrom($fromEmail, $fromName);
+            $email->setTo($reg->contact_email, $reg->contact_name);
+
+            if ($decision === 'approved') {
+                $email->setSubject('ABDM Gateway - Hospital Registration Approved');
+                $body = "
+                <p>Dear {$reg->contact_name},</p>
+                <p>Your hospital registration request for <strong>{$reg->hospital_name}</strong> has been <strong style='color:green;'>approved</strong>.</p>
+                <p><strong>Your Login Credentials:</strong></p>
+                <ul>
+                    <li><strong>Portal URL:</strong> " . base_url() . "</li>
+                    <li><strong>Username:</strong> {$reg->desired_username}</li>
+                    <li><strong>Password:</strong> The password you set during registration</li>
+                </ul>
+                <p>Please login and change your password after first login.</p>
+                <p>Regards,<br>{$fromName}</p>";
+            } else {
+                $email->setSubject('ABDM Gateway - Hospital Registration Update');
+                $body = "
+                <p>Dear {$reg->contact_name},</p>
+                <p>Your hospital registration request for <strong>{$reg->hospital_name}</strong> has been <strong style='color:red;'>rejected</strong>.</p>
+                " . ($notes ? "<p><strong>Reason:</strong> {$notes}</p>" : '') . "
+                <p>If you have questions, please contact our support team.</p>
+                <p>Regards,<br>{$fromName}</p>";
+            }
+
+            $email->setMessage($body);
+            $email->send();
+        } catch (\Throwable $e) {
+            log_message('error', 'Registration email failed: ' . $e->getMessage());
+        }
+    }
+
+    // ─── SMTP Settings ────────────────────────────────────────────────────────
+
+    public function smtpSettings()
+    {
+        $keys = ['smtp_host','smtp_port','smtp_user','smtp_pass','smtp_from_email','smtp_from_name','smtp_encryption'];
+        $settings = [];
+        foreach ($keys as $k) {
+            $settings[$k] = AppSetting::get($k);
+        }
+        return view('admin/smtp_settings', ['settings' => $settings]);
+    }
+
+    public function smtpSettingsSave()
+    {
+        $fields = ['smtp_host','smtp_port','smtp_user','smtp_pass','smtp_from_email','smtp_from_name','smtp_encryption'];
+        foreach ($fields as $k) {
+            $val = (string) $this->request->getPost($k);
+            AppSetting::set($k, $val);
+        }
+        return redirect()->to('/admin/settings/smtp')->with('message', 'SMTP settings saved.');
+    }
+
+    public function smtpSettingsTest()
+    {
+        $testEmail = trim((string) $this->request->getPost('test_email'));
+        if (!$testEmail || !filter_var($testEmail, FILTER_VALIDATE_EMAIL)) {
+            return redirect()->to('/admin/settings/smtp')->with('error', 'Enter a valid email to test.');
+        }
+
+        $smtp = AppSetting::smtp();
+        if (empty($smtp['smtp_host'])) {
+            return redirect()->to('/admin/settings/smtp')->with('error', 'SMTP not configured yet.');
+        }
+
+        try {
+            $email = \Config\Services::email();
+            $email->initialize([
+                'protocol'   => 'smtp',
+                'SMTPHost'   => $smtp['smtp_host'] ?? '',
+                'SMTPPort'   => (int)($smtp['smtp_port'] ?? 587),
+                'SMTPUser'   => $smtp['smtp_user'] ?? '',
+                'SMTPPass'   => $smtp['smtp_pass'] ?? '',
+                'SMTPCrypto' => $smtp['smtp_encryption'] ?? 'tls',
+                'mailType'   => 'html',
+                'charset'    => 'utf-8',
+            ]);
+            $fromEmail = $smtp['smtp_from_email'] ?? $smtp['smtp_user'] ?? '';
+            $fromName  = $smtp['smtp_from_name'] ?? 'ABDM Gateway';
+            $email->setFrom($fromEmail, $fromName);
+            $email->setTo($testEmail);
+            $email->setSubject('ABDM Gateway - SMTP Test');
+            $email->setMessage('<p>SMTP is working correctly from ABDM Gateway admin panel.</p>');
+            $email->send();
+            return redirect()->to('/admin/settings/smtp')->with('message', 'Test email sent to ' . $testEmail);
+        } catch (\Throwable $e) {
+            return redirect()->to('/admin/settings/smtp')->with('error', 'Email failed: ' . $e->getMessage());
+        }
     }
 }
 

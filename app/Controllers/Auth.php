@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Models\AbdmHospitalUser;
 use App\Models\AbdmHospital;
 use App\Models\AdminUser;
+use App\Models\HospitalRegistration;
 use CodeIgniter\Controller;
 
 class Auth extends Controller
@@ -38,60 +39,62 @@ class Auth extends Controller
     public function register()
     {
         if ($this->request->is('post')) {
-            $username = trim((string) $this->request->getPost('username'));
-            $password = trim((string) $this->request->getPost('password'));
-            $confirm_password = trim((string) $this->request->getPost('confirm_password'));
-            $hospital_id = (int) $this->request->getPost('hospital_id');
+            $hospitalName    = trim((string) $this->request->getPost('hospital_name'));
+            $hfrId           = trim((string) $this->request->getPost('hfr_id'));
+            $contactName     = trim((string) $this->request->getPost('contact_name'));
+            $contactEmail    = trim((string) $this->request->getPost('contact_email'));
+            $contactPhone    = trim((string) $this->request->getPost('contact_phone'));
+            $city            = trim((string) $this->request->getPost('city'));
+            $state           = trim((string) $this->request->getPost('state'));
+            $description     = trim((string) $this->request->getPost('description'));
+            $username        = trim((string) $this->request->getPost('username'));
+            $password        = (string) $this->request->getPost('password');
+            $confirmPassword = (string) $this->request->getPost('confirm_password');
 
-            // Validation
-            if (empty($username) || empty($password)) {
-                return redirect()->back()->with('error', 'Username and password are required.');
+            // Required fields
+            if (!$hospitalName || !$contactName || !$contactEmail || !$contactPhone || !$username || !$password) {
+                return redirect()->back()->withInput()->with('error', 'Please fill all required fields.');
+            }
+            if (!filter_var($contactEmail, FILTER_VALIDATE_EMAIL)) {
+                return redirect()->back()->withInput()->with('error', 'Invalid email address.');
+            }
+            if (strlen($password) < 8) {
+                return redirect()->back()->withInput()->with('error', 'Password must be at least 8 characters.');
+            }
+            if ($password !== $confirmPassword) {
+                return redirect()->back()->withInput()->with('error', 'Passwords do not match.');
             }
 
-            if (strlen($password) < 6) {
-                return redirect()->back()->with('error', 'Password must be at least 6 characters.');
+            $regModel = new HospitalRegistration();
+
+            // Prevent duplicate pending applications
+            $dup = $regModel->where('desired_username', $username)->where('status', 'pending')->first();
+            if ($dup) {
+                return redirect()->back()->withInput()->with('error', 'An application with this username is already pending review.');
+            }
+            $dupEmail = $regModel->where('contact_email', $contactEmail)->where('status', 'pending')->first();
+            if ($dupEmail) {
+                return redirect()->back()->withInput()->with('error', 'An application with this email is already pending review.');
             }
 
-            if ($password !== $confirm_password) {
-                return redirect()->back()->with('error', 'Passwords do not match.');
-            }
+            $regModel->insert([
+                'hospital_name'    => $hospitalName,
+                'hfr_id'           => $hfrId ?: null,
+                'contact_name'     => $contactName,
+                'contact_email'    => $contactEmail,
+                'contact_phone'    => $contactPhone,
+                'city'             => $city ?: null,
+                'state'            => $state ?: null,
+                'description'      => $description ?: null,
+                'desired_username' => $username,
+                'password_hash'    => password_hash($password, PASSWORD_BCRYPT),
+                'status'           => 'pending',
+            ]);
 
-            // Check if username already exists
-            $existing = $this->userModel->where('username', $username)->first();
-            if ($existing) {
-                return redirect()->back()->with('error', 'Username already exists.');
-            }
-
-            // Check if hospital exists
-            $hospitalModel = new \App\Models\AbdmHospital();
-            if (!$hospitalModel->find($hospital_id)) {
-                return redirect()->back()->with('error', 'Selected hospital does not exist.');
-            }
-
-            // Generate API token
-            $apiToken = bin2hex(random_bytes(64));
-
-            // Create user
-            $insertData = [
-                'hospital_id' => $hospital_id,
-                'username' => $username,
-                'password_hash' => password_hash($password, PASSWORD_BCRYPT),
-                'api_token' => $apiToken,
-                'role' => 'hospital_user',
-                'is_active' => 1,
-            ];
-
-            if ($this->userModel->insert($insertData)) {
-                return redirect()->to('/auth/login')->with('message', 'Registration successful! Please login.');
-            } else {
-                return redirect()->back()->with('error', 'Registration failed. Please try again.');
-            }
+            return view('auth/register', ['submitted' => true]);
         }
 
-        $hospitalModel = new \App\Models\AbdmHospital();
-        $hospitals = $hospitalModel->findAll();
-
-        return view('auth/register', ['hospitals' => $hospitals]);
+        return view('auth/register');
     }
 
     public function logout()
