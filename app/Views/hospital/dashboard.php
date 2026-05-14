@@ -11,6 +11,73 @@ $hfrId = is_object($hospital) ? ($hospital->hfr_id ?? '')
     : (is_array($hospital) ? ($hospital['hfr_id'] ?? '') : '');
 $mode = is_object($hospital) ? ($hospital->gateway_mode ?? 'test')
     : (is_array($hospital) ? ($hospital['gateway_mode'] ?? 'test') : 'test');
+?>
+
+<!-- Page header -->
+<div class="hp-page-header">
+    <div>
+        <h5><i class="fas fa-home"></i> Dashboard</h5>
+        <nav><ol class="breadcrumb"><li class="breadcrumb-item active">Home</li></ol></nav>
+    </div>
+    <div class="d-flex align-items-center gap-2" style="gap:8px;">
+        <span class="hb hb-<?= $mode === 'live' ? 'red' : 'blue' ?>" style="font-size:12px;padding:5px 12px;">
+            <i class="fas fa-circle" style="font-size:7px;vertical-align:middle;"></i>
+            <?= strtoupper(esc($mode)) ?> MODE
+        </span>
+        <?php if ($hfrId !== ''): ?>
+        <span class="hb hb-blue" style="font-size:12px;padding:5px 12px;">HFR: <?= esc($hfrId) ?></span>
+        <?php endif; ?>
+    </div>
+</div>
+
+<div class="hp-content">
+
+    <!-- Hospital info banner -->
+    <div class="hp-card" style="background: linear-gradient(120deg, var(--hp-dark) 0%, var(--hp-primary) 100%); border:0;">
+        <div class="hp-card-body" style="padding: 24px 28px;">
+            <div class="d-flex align-items-center" style="gap:16px;">
+                <div style="width:52px;height:52px;background:rgba(255,255,255,.15);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-hospital-alt" style="font-size:24px;color:#fff;"></i>
+                </div>
+                <div>
+                    <div style="color:rgba(255,255,255,.6);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Logged in as</div>
+                    <div style="color:#fff;font-size:20px;font-weight:700;margin:2px 0;"><?= esc($hospitalName) ?></div>
+                    <?php if ($hfrId !== ''): ?>
+                    <div style="color:rgba(255,255,255,.6);font-size:12px;">
+                        <i class="fas fa-id-card-alt mr-1"></i> HFR ID: <?= esc($hfrId) ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Placeholder: more items coming -->
+    <div class="hp-card">
+        <div class="hp-card-body" style="text-align:center;padding:60px 20px;">
+            <i class="fas fa-tools" style="font-size:48px;color:#dee2e6;display:block;margin-bottom:16px;"></i>
+            <h5 style="color:#6c757d;font-weight:600;">More features coming soon</h5>
+            <p style="color:#adb5bd;font-size:14px;margin:0;">
+                This portal is ready. Tell us what to add here.
+            </p>
+        </div>
+    </div>
+
+</div>
+
+<?= $this->endSection() ?>
+
+
+<?= $this->section('content') ?>
+
+<?php
+$hospital = $hospital ?? null;
+$hospitalName = is_object($hospital) ? ($hospital->hospital_name ?? 'Your Hospital')
+    : (is_array($hospital) ? ($hospital['hospital_name'] ?? 'Your Hospital') : 'Your Hospital');
+$hfrId = is_object($hospital) ? ($hospital->hfr_id ?? '')
+    : (is_array($hospital) ? ($hospital['hfr_id'] ?? '') : '');
+$mode = is_object($hospital) ? ($hospital->gateway_mode ?? 'test')
+    : (is_array($hospital) ? ($hospital['gateway_mode'] ?? 'test') : 'test');
 $recentProfiles = $recentProfiles ?? [];
 ?>
 
