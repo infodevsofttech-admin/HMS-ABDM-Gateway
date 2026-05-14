@@ -11,6 +11,151 @@ $hfrId = is_object($hospital) ? ($hospital->hfr_id ?? '')
     : (is_array($hospital) ? ($hospital['hfr_id'] ?? '') : '');
 $mode = is_object($hospital) ? ($hospital->gateway_mode ?? 'test')
     : (is_array($hospital) ? ($hospital['gateway_mode'] ?? 'test') : 'test');
+$recentProfiles = $recentProfiles ?? [];
+?>
+
+<!-- Page Header -->
+<div class="hp-page-header">
+    <div>
+        <h4><i class="fas fa-hospital-alt" style="color:var(--hp-primary);margin-right:8px;"></i><?= esc($hospitalName) ?></h4>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item active">Dashboard</li>
+            </ol>
+        </nav>
+    </div>
+    <div>
+        <span class="badge badge-<?= $mode === 'live' ? 'danger' : 'info' ?>" style="font-size:12px;padding:6px 12px;">
+            <i class="fas fa-circle" style="font-size:8px;"></i>
+            <?= strtoupper(esc($mode)) ?> MODE
+        </span>
+        <?php if ($hfrId !== ''): ?>
+        <span class="badge badge-secondary ml-2" style="font-size:12px;padding:6px 12px;">
+            HFR: <?= esc($hfrId) ?>
+        </span>
+        <?php endif; ?>
+    </div>
+</div>
+
+<div class="hp-content">
+
+    <!-- Quick Action Tiles -->
+    <div class="row">
+        <div class="col-md-3 col-sm-6">
+            <a href="/admin/m1/abha-validate" style="text-decoration:none;">
+                <div class="hp-stat">
+                    <div class="stat-icon" style="background:#0d6efd;"><i class="fas fa-search"></i></div>
+                    <div>
+                        <div class="stat-label">Validate</div>
+                        <div style="font-size:15px;font-weight:700;color:#0a3d62;">ABHA</div>
+                        <div style="font-size:11px;color:#6c757d;">Quick lookup</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <a href="/admin/m1/otp-flow" style="text-decoration:none;">
+                <div class="hp-stat">
+                    <div class="stat-icon" style="background:#00b894;"><i class="fas fa-user-plus"></i></div>
+                    <div>
+                        <div class="stat-label">Create</div>
+                        <div style="font-size:15px;font-weight:700;color:#0a3d62;">New Patient</div>
+                        <div style="font-size:11px;color:#6c757d;">Aadhaar OTP flow</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <a href="/admin/m1/verify-flow" style="text-decoration:none;">
+                <div class="hp-stat">
+                    <div class="stat-icon" style="background:#6f42c1;"><i class="fas fa-check-circle"></i></div>
+                    <div>
+                        <div class="stat-label">Verify</div>
+                        <div style="font-size:15px;font-weight:700;color:#0a3d62;">Existing ABHA</div>
+                        <div style="font-size:11px;color:#6c757d;">OTP verification</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <a href="/admin/m1/scan-share" style="text-decoration:none;">
+                <div class="hp-stat">
+                    <div class="stat-icon" style="background:#e74c3c;"><i class="fas fa-ticket-alt"></i></div>
+                    <div>
+                        <div class="stat-label">OPD Queue</div>
+                        <div style="font-size:15px;font-weight:700;color:#0a3d62;">Token Queue</div>
+                        <div style="font-size:11px;color:#6c757d;">Scan &amp; Share</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- Patient Master table -->
+    <div class="hp-card">
+        <div class="hp-card-header">
+            <i class="fas fa-database"></i> Recent Patient Master
+            <a href="/admin/m1/abha-profiles" class="btn btn-sm btn-outline-primary ml-auto" style="font-size:12px;">
+                View All →
+            </a>
+        </div>
+        <div class="hp-card-body" style="padding:0;">
+            <?php if (count($recentProfiles) > 0): ?>
+            <table class="hp-table">
+                <thead>
+                    <tr>
+                        <th>ABHA Number</th>
+                        <th>Name</th>
+                        <th>Mobile</th>
+                        <th>Gender</th>
+                        <th>Status</th>
+                        <th>Verified At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($recentProfiles as $p): ?>
+                    <tr>
+                        <td><strong style="font-family:monospace;color:#1d4ed8;"><?= esc((string)($p->abha_number ?? '')) ?></strong></td>
+                        <td><?= esc((string)($p->full_name ?? '')) ?></td>
+                        <td><?= esc((string)($p->mobile ?? '—')) ?></td>
+                        <td><?php
+                            $g = (string)($p->gender ?? '');
+                            echo esc($g === 'M' ? 'Male' : ($g === 'F' ? 'Female' : ($g ?: '—')));
+                        ?></td>
+                        <td>
+                            <?php $st = strtoupper((string)($p->abha_status ?? 'ACTIVE')); ?>
+                            <span class="hp-badge hp-badge-<?= $st === 'ACTIVE' ? 'success' : 'warning' ?>"><?= esc($st) ?></span>
+                        </td>
+                        <td style="font-size:12px;color:#6c757d;"><?= esc(substr((string)($p->last_verified_at ?? ''), 0, 16)) ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php else: ?>
+            <div style="text-align:center;padding:40px;color:#adb5bd;">
+                <i class="fas fa-inbox" style="font-size:40px;display:block;margin-bottom:12px;"></i>
+                No ABHA profiles yet.
+                <a href="/admin/m1/otp-flow" style="color:var(--hp-primary);">Create the first one →</a>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+</div>
+
+<?= $this->endSection() ?>
+
+
+<?= $this->section('content') ?>
+
+<?php
+$hospital = $hospital ?? null;
+$hospitalName = is_object($hospital) ? ($hospital->hospital_name ?? 'Your Hospital')
+    : (is_array($hospital) ? ($hospital['hospital_name'] ?? 'Your Hospital') : 'Your Hospital');
+$hfrId = is_object($hospital) ? ($hospital->hfr_id ?? '')
+    : (is_array($hospital) ? ($hospital['hfr_id'] ?? '') : '');
+$mode = is_object($hospital) ? ($hospital->gateway_mode ?? 'test')
+    : (is_array($hospital) ? ($hospital['gateway_mode'] ?? 'test') : 'test');
 ?>
 
 <div class="page-title">
