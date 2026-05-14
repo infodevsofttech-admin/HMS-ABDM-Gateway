@@ -1,0 +1,1352 @@
+<?php
+
+namespace App\Controllers;
+
+use App\Models\AbdmRequestLog;
+use App\Models\AbdmAuditTrail;
+use App\Models\AbdmBundle;
+use App\Models\AbdmHospitalUser;
+use App\Models\AbdmTestSubmissionLog;
+
+class AbdmGateway extends BaseController
+{
+    protected $requestLog;
+    protected $auditTrail;
+    protected $bundleLog;
+    protected $hospitalUser;
+    protected $testSubmissionLog;
+    protected ?string $cachedAbdmToken = null;
+    protected ?int $authHospitalId = null;
+    protected ?int $authUserId = null;
+    protected ?string $authHospitalMode = null;
+    protected string $authPrincipal = 'system';
+
+
+    protected function bootRepositories(): void
+    {
+        if ($this->isTestMode()) {
+            return;
+        }
+
+        if ($this->requestLog === null) {
+            try {
+                $this->requestLog = new AbdmRequestLog();
+            } catch (\Throwable $e) {
+                $this->requestLog = null;
+                log_message('error', 'ABDM request logger unavailable: ' . $e->getMessage());
+            }
+        }
+
+        if ($this->auditTrail === null) {
+            try {
+                $this->auditTrail = new AbdmAuditTrail();
+            } catch (\Throwable $e) {
+                $this->auditTrail = null;
+                log_message('error', 'ABDM audit trail unavailable: ' . $e->getMessage());
+            }
+        }
+
+        if ($this->bundleLog === null) {
+            try {
+                $this->bundleLog = new AbdmBundle();
+            } catch (\Throwable $e) {
+                $this->bundleLog = null;
+                log_message('error', 'ABDM bundle logger unavailable: ' . $e->getMessage());
+            }
+        }
+    }
+
+    protected function bootAuthRepository(): void
+    {
+        if ($this->hospitalUser === null) {
+            $this->hospitalUser = new AbdmHospitalUser();
+        }
+    }
+
+    protected function bootTestLogger(): void
+    {
+        if ($this->testSubmissionLog === null) {
+            $this->testSubmissionLog = new AbdmTestSubmissionLog();
+        }
+    }
+
+    /**
+     * Health Check Endpoint
+     * GET /api/v3/health
+     */
+    public function health()
+    {
+        return $this->response->setJSON([
+            'status' => 'ok',
+            'timestamp' => date('c'),
+            'service' => 'abdm-bridge-gateway',
+            'version' => '1.0.0',
+            'mode' => $this->isTestMode() ? 'test' : 'live',
+            'uptime' => (int)(microtime(true) - $_SERVER['REQUEST_TIME_FLOAT']),
+        ]);
+    }
+
+    /**
+     * ABHA Validation Endpoint
+     * POST /api/v3/abha/validate
+     * Proxies to ABDM M3 API
+     */
+    public function abhaValidate()
+    {
+        $requestId = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', '/api/v3/abha/validate', 403,
+                             $authStatus, 'Invalid or missing bearer token');
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0,
+                'error' => 'Invalid authorization token'
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $body = (array) ($this->request->getJSON(true) ?? []);
+            $abha = $body['abha_id'] ?? ($body['abha_address'] ?? '00-0000-0000-0000');
+
+            $response = [
+                'ok' => 1,
+                'mode' => 'test',
+                'request_id' => $requestId,
+                'data' => [
+                    'abha' => $abha,
+                    'status' => 'VALID',
+                    'message' => 'Mock response in test mode',
+                ],
+            ];
+
+            $this->logTestSubmission(
+                $requestId,
+                '/api/v3/abha/validate',
+                $body,
+                $response,
+                200,
+                'abdm.abha.validate'
+            );
+
+            return $this->response->setJSON($response);
+        }
+
+        $this->bootRepositories();
+        $startTime = microtime(true);
+
+        $body = $this->request->getJSON();
+        $abhaId = $body->abha_id ?? null;
+        $abhaAddress = $body->abha_address ?? null;
+
+        // Validate input
+        if (!$abhaId && !$abhaAddress) {
+            $this->logRequest($requestId, 'POST', '/api/v3/abha/validate', 400, 
+                             'valid', 'Missing abha_id or abha_address');
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0,
+                'error' => 'Either abha_id or abha_address required'
+            ]);
+        }
+
+        try {
+            // Call ABDM M3 API
+            $abdmUrl = config('AbdmGateway')->m3Url . '/abha/validate';
+            $abdmToken = $this->getAbdmAccessToken();
+            
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $abdmUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => json_encode($body),
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer ' . $abdmToken,
+                    'Content-Type: application/json',
+                    'X-Client-ID: ' . config('AbdmGateway')->sourceCode,
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlError) {
+                throw new \Exception($curlError);
+            }
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', '/api/v3/abha/validate', $httpCode, 
+                             'valid', null, $responseTime);
+
+            $decodedResponse = json_decode((string) $response, true);
+            $responseData = is_array($decodedResponse)
+                ? $decodedResponse
+                : ['raw_response' => trim((string) $response)];
+
+            return $this->response->setStatusCode($httpCode)->setJSON([
+                'ok' => $httpCode === 200 ? 1 : 0,
+                'data' => $responseData,
+                'request_id' => $requestId,
+            ]);
+
+        } catch (\Exception $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', '/api/v3/abha/validate', 500, 
+                             'valid', $e->getMessage(), $responseTime);
+            
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0,
+                'error' => $e->getMessage(),
+                'request_id' => $requestId,
+            ]);
+        }
+    }
+
+    /**
+     * ABDM M1: Generate Aadhaar OTP for ABHA verification/creation flow.
+     * POST /api/v3/abha/aadhaar/generate-otp
+     */
+    public function abhaAadhaarGenerateOtp()
+    {
+        return $this->proxyM1Endpoint(
+            '/api/v3/abha/aadhaar/generate-otp',
+            config('AbdmGateway')->m1AadhaarGenerateOtpPath
+        );
+    }
+
+    /**
+     * ABDM M1: Verify Aadhaar OTP and continue ABHA flow.
+     * POST /api/v3/abha/aadhaar/verify-otp
+     */
+    public function abhaAadhaarVerifyOtp()
+    {
+        return $this->proxyM1Endpoint(
+            '/api/v3/abha/aadhaar/verify-otp',
+            config('AbdmGateway')->m1AadhaarVerifyOtpPath
+        );
+    }
+
+    /**
+     * ABDM M1: Generate mobile OTP.
+     * POST /api/v3/abha/mobile/generate-otp
+     */
+    public function abhaMobileGenerateOtp()
+    {
+        return $this->proxyM1Endpoint(
+            '/api/v3/abha/mobile/generate-otp',
+            config('AbdmGateway')->m1MobileGenerateOtpPath
+        );
+    }
+
+    /**
+     * ABDM M1: Verify mobile OTP.
+     * POST /api/v3/abha/mobile/verify-otp
+     */
+    public function abhaMobileVerifyOtp()
+    {
+        return $this->proxyM1Endpoint(
+            '/api/v3/abha/mobile/verify-otp',
+            config('AbdmGateway')->m1MobileVerifyOtpPath
+        );
+    }
+
+    /**
+     * Consent Request Endpoint
+     * POST /api/v3/consent/request
+     */
+    public function consentRequest()
+    {
+        $requestId = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0,
+                'error' => 'Unauthorized'
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $body = (array) ($this->request->getJSON(true) ?? []);
+
+            $response = [
+                'ok' => 1,
+                'mode' => 'test',
+                'request_id' => $requestId,
+                'consent_id' => 'CONS-TEST-' . date('YmdHis'),
+                'data' => [
+                    'patient_abha' => $body['patient_abha'] ?? '00-0000-0000-0000',
+                    'purpose' => $body['purpose'] ?? 'TREATMENT',
+                    'hi_types' => $body['hi_types'] ?? ['OPConsultation'],
+                    'status' => 'REQUESTED',
+                    'message' => 'Mock response in test mode',
+                ],
+            ];
+
+            $this->logTestSubmission(
+                $requestId,
+                '/api/v3/consent/request',
+                $body,
+                $response,
+                200,
+                'abdm.consent.requested'
+            );
+
+            return $this->response->setJSON($response);
+        }
+
+        $this->bootRepositories();
+        $startTime = microtime(true);
+
+        $body = $this->request->getJSON();
+        $patientAbha = $body->patient_abha ?? null;
+        $purpose = $body->purpose ?? 'treatment';
+        $hiTypes = $body->hi_types ?? [];
+
+        // Validate input
+        if (!$patientAbha || !is_array($hiTypes)) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0,
+                'error' => 'patient_abha and hi_types array required'
+            ]);
+        }
+
+        try {
+            $consentId = 'CONS-' . date('YmdHis') . '-' . substr(md5(random_bytes(16)), 0, 8);
+
+            // Call ABDM M3 API
+            $abdmUrl = config('AbdmGateway')->m3Url . '/consent/request';
+            $abdmToken = $this->getAbdmAccessToken();
+
+            $payload = [
+                'consent_id' => $consentId,
+                'patient_abha' => $patientAbha,
+                'purpose' => $purpose,
+                'hi_types' => $hiTypes,
+            ];
+
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $abdmUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => json_encode($payload),
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer ' . $abdmToken,
+                    'Content-Type: application/json',
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            // Log to audit trail
+            $this->auditTrail->insert([
+                'request_id' => $requestId,
+                'action' => 'consent_request',
+                'patient_abha' => $patientAbha,
+                'consent_id' => $consentId,
+                'hi_types' => json_encode($hiTypes),
+                'action_status' => $httpCode === 200 ? 'success' : 'failed',
+                'details' => json_encode($payload),
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', '/api/v3/consent/request', $httpCode, 
+                             'valid', null, $responseTime);
+
+            return $this->response->setStatusCode($httpCode)->setJSON([
+                'ok' => $httpCode === 200 ? 1 : 0,
+                'consent_id' => $consentId,
+                'data' => json_decode($response, true),
+                'request_id' => $requestId,
+            ]);
+
+        } catch (\Exception $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', '/api/v3/consent/request', 500, 
+                             'valid', $e->getMessage(), $responseTime);
+
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0,
+                'error' => $e->getMessage(),
+                'request_id' => $requestId,
+            ]);
+        }
+    }
+
+    /**
+     * Bundle Push Endpoint
+     * POST /api/v3/bundle/push
+     */
+    public function bundlePush()
+    {
+        $requestId = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0,
+                'error' => 'Unauthorized'
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $body = (array) ($this->request->getJSON(true) ?? []);
+
+            $response = [
+                'ok' => 1,
+                'mode' => 'test',
+                'request_id' => $requestId,
+                'bundle_id' => 'BUN-TEST-' . date('YmdHis'),
+                'data' => [
+                    'consent_id' => $body['consent_id'] ?? 'CONS-TEST',
+                    'hi_type' => $body['hi_type'] ?? 'OPConsultation',
+                    'status' => 'ACCEPTED',
+                    'message' => 'Mock response in test mode',
+                ],
+            ];
+
+            $this->logTestSubmission(
+                $requestId,
+                '/api/v3/bundle/push',
+                $body,
+                $response,
+                200,
+                'abdm.fhir.share.requested'
+            );
+
+            return $this->response->setJSON($response);
+        }
+
+        $this->bootRepositories();
+        $startTime = microtime(true);
+
+        $body = $this->request->getJSON();
+        $fhirBundle = $body->fhir_bundle ?? null;
+        $consentId = $body->consent_id ?? null;
+        $hiType = $body->hi_type ?? null;
+
+        if (!$fhirBundle || !$consentId || !$hiType) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0,
+                'error' => 'fhir_bundle, consent_id, and hi_type required'
+            ]);
+        }
+
+        try {
+            $bundleId = 'BUN-' . date('YmdHis') . '-' . substr(md5(random_bytes(16)), 0, 8);
+            $bundleHash = sha1(json_encode($fhirBundle));
+
+            // Call ABDM M3 API
+            $abdmUrl = config('AbdmGateway')->m3Url . '/bundle/push';
+            $abdmToken = $this->getAbdmAccessToken();
+
+            $payload = [
+                'bundle_id' => $bundleId,
+                'hi_type' => $hiType,
+                'consent_id' => $consentId,
+                'fhir_bundle' => $fhirBundle,
+            ];
+
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $abdmUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => json_encode($payload),
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer ' . $abdmToken,
+                    'Content-Type: application/json',
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            // Log bundle
+            $this->bundleLog->insert([
+                'bundle_id' => $bundleId,
+                'consent_id' => $consentId,
+                'hi_type' => $hiType,
+                'bundle_hash' => $bundleHash,
+                'push_status' => $httpCode === 200 ? 'pushed' : 'failed',
+                'response_status' => $httpCode,
+                'response_body' => $response,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', '/api/v3/bundle/push', $httpCode, 
+                             'valid', null, $responseTime);
+
+            return $this->response->setStatusCode($httpCode)->setJSON([
+                'ok' => $httpCode === 200 ? 1 : 0,
+                'bundle_id' => $bundleId,
+                'data' => json_decode($response, true),
+                'request_id' => $requestId,
+            ]);
+
+        } catch (\Exception $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', '/api/v3/bundle/push', 500, 
+                             'valid', $e->getMessage(), $responseTime);
+
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0,
+                'error' => $e->getMessage(),
+                'request_id' => $requestId,
+            ]);
+        }
+    }
+
+    /**
+     * SNOMED Search Endpoint
+     * GET /api/v3/snomed/search
+     */
+    public function snomedSearch()
+    {
+        $requestId = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0,
+                'error' => 'Unauthorized'
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $term = (string) ($this->request->getGet('term') ?? 'fever');
+
+            $response = [
+                'ok' => 1,
+                'mode' => 'test',
+                'request_id' => $requestId,
+                'data' => [
+                    ['code' => '386661006', 'term' => $term],
+                    ['code' => '271807003', 'term' => $term . ' symptom'],
+                ],
+            ];
+
+            $this->logTestSubmission(
+                $requestId,
+                '/api/v3/snomed/search',
+                [
+                    'term' => $term,
+                    'return_limit' => (string) ($this->request->getGet('return_limit') ?? '10'),
+                ],
+                $response,
+                200,
+                'abdm.scan_share.lookup'
+            );
+
+            return $this->response->setJSON($response);
+        }
+
+        $this->bootRepositories();
+        $startTime = microtime(true);
+
+        $term = $this->request->getGet('term');
+        $returnLimit = $this->request->getGet('return_limit') ?? 10;
+
+        if (!$term) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0,
+                'error' => 'term parameter required'
+            ]);
+        }
+
+        try {
+            // Call CSNOtk SNOMED service
+            $snomedUrl = config('AbdmGateway')->snomedUrl . '/search/suggest';
+            
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $snomedUrl . '?term=' . urlencode($term) . '&returnlimit=' . $returnLimit,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'GET', '/api/v3/snomed/search', $httpCode, 
+                             'valid', null, $responseTime);
+
+            return $this->response->setStatusCode($httpCode)->setJSON([
+                'ok' => $httpCode === 200 ? 1 : 0,
+                'data' => json_decode($response, true),
+                'request_id' => $requestId,
+            ]);
+
+        } catch (\Exception $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'GET', '/api/v3/snomed/search', 500, 
+                             'valid', $e->getMessage(), $responseTime);
+
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0,
+                'error' => $e->getMessage(),
+                'request_id' => $requestId,
+            ]);
+        }
+    }
+
+    /**
+     * Gateway Status Endpoint
+     * GET /api/v3/gateway/status
+     */
+    public function gatewayStatus()
+    {
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0,
+                'error' => 'Unauthorized'
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            return $this->response->setJSON([
+                'ok' => 1,
+                'mode' => 'test',
+                'data' => [
+                    'gateway' => 'ok',
+                    'database' => 'skipped',
+                    'abdm_m3' => 'skipped',
+                    'snomed_service' => 'skipped',
+                    'timestamp' => date('c'),
+                ],
+            ]);
+        }
+
+        $this->bootRepositories();
+
+        $status = [
+            'gateway' => 'ok',
+            'database' => $this->checkDatabase(),
+            'abdm_m3' => $this->checkAbdmM3(),
+            'snomed_service' => $this->checkSnomedService(),
+            'timestamp' => date('c'),
+        ];
+
+        $allOk = $status['gateway'] === 'ok' && 
+                 $status['database'] === 'ok' && 
+                 $status['abdm_m3'] === 'ok' && 
+                 $status['snomed_service'] === 'ok';
+
+        return $this->response->setJSON([
+            'ok' => $allOk ? 1 : 0,
+            'data' => $status,
+        ]);
+    }
+
+    /**
+     * Bridge ingress endpoint for HMS queue events.
+     * POST /api/v1/bridge
+     */
+    public function bridgeDispatch()
+    {
+        $requestId = $this->generateRequestId();
+
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0,
+                'error' => 'Unauthorized bridge request',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        $body = (array) ($this->request->getJSON(true) ?? []);
+        $eventType = trim((string) ($body['event_type'] ?? ''));
+        $payload = isset($body['payload']) && is_array($body['payload']) ? $body['payload'] : $body;
+
+        if ($eventType === '') {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0,
+                'error' => 'event_type is required',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        $route = $this->resolveBridgeRoute($eventType, $payload);
+        if ($route['ok'] !== true) {
+            return $this->response->setStatusCode(422)->setJSON([
+                'ok' => 0,
+                'event_type' => $eventType,
+                'error' => $route['error'] ?? 'Unsupported event_type',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        $dispatch = $this->dispatchBridgeRoute($route);
+
+        if ($this->isTestMode()) {
+            $this->logTestSubmission(
+                $requestId,
+                '/api/v1/bridge',
+                [
+                    'event_type' => $eventType,
+                    'payload' => $payload,
+                    'route' => $route,
+                ],
+                $dispatch,
+                (int) ($dispatch['http_code'] ?? 200),
+                $eventType
+            );
+        }
+
+        return $this->response->setStatusCode((int) ($dispatch['http_code'] ?? 200))->setJSON([
+            'ok' => (int) ($dispatch['ok'] ?? 0),
+            'event_type' => $eventType,
+            'target' => (string) ($route['path'] ?? ''),
+            'request_id' => $requestId,
+            'dispatch' => $dispatch,
+        ]);
+    }
+
+    // ==================== Helper Methods ====================
+
+    /**
+     * Validate Bearer Token
+     */
+    protected function validateBearer()
+    {
+        $this->authHospitalId = null;
+        $this->authUserId = null;
+        $this->authHospitalMode = null;
+        $this->authPrincipal = 'system';
+
+        $authHeader = $this->request->getHeaderLine('Authorization');
+
+        if (!$authHeader) {
+            return 'missing';
+        }
+
+        $parts = explode(' ', $authHeader);
+        if (count($parts) !== 2) {
+            return 'invalid_format';
+        }
+
+        $scheme = trim((string) $parts[0]);
+        $credential = trim((string) $parts[1]);
+
+        if ($scheme === 'Bearer') {
+            $configured = trim((string) config('AbdmGateway')->bearerToken);
+            $accepted = array_filter([
+                $configured,
+                trim((string) env('ABDM_BRIDGE_TOKEN', '')),
+                trim((string) env('BRIDGE_SYNC_TOKEN', '')),
+            ], static fn($v) => $v !== '');
+
+            foreach ($accepted as $expected) {
+                if (hash_equals((string) $expected, $credential)) {
+                    $this->authPrincipal = 'gateway';
+                    return 'valid';
+                }
+            }
+
+            if ($configured === '') {
+                $configured = trim((string) env('GATEWAY_BEARER_TOKEN', ''));
+            }
+
+            if ($configured !== '' && hash_equals($configured, $credential)) {
+                $this->authPrincipal = 'gateway';
+                return 'valid';
+            }
+
+            $user = $this->findHospitalUserByToken($credential);
+            if ($user === null) {
+                return 'invalid_token';
+            }
+
+            $this->authUserId = isset($user['user_id']) ? (int) $user['user_id'] : null;
+            $this->authHospitalId = isset($user['hospital_id']) ? (int) $user['hospital_id'] : null;
+            $this->authHospitalMode = isset($user['gateway_mode']) ? (string) $user['gateway_mode'] : null;
+            $this->authPrincipal = isset($user['username']) ? (string) $user['username'] : 'hospital_user';
+            $this->touchHospitalUserLogin($this->authUserId);
+
+            return 'valid';
+        }
+
+        if ($scheme === 'Basic') {
+            $decoded = base64_decode($credential, true);
+            if ($decoded === false || strpos($decoded, ':') === false) {
+                return 'invalid_format';
+            }
+
+            [$username, $password] = explode(':', $decoded, 2);
+            $user = $this->findHospitalUserByUsername(trim((string) $username));
+            if ($user === null) {
+                return 'invalid_token';
+            }
+
+            $passwordHash = (string) ($user['password_hash'] ?? '');
+            if ($passwordHash === '' || !password_verify((string) $password, $passwordHash)) {
+                return 'invalid_token';
+            }
+
+            $this->authUserId = isset($user['user_id']) ? (int) $user['user_id'] : null;
+            $this->authHospitalId = isset($user['hospital_id']) ? (int) $user['hospital_id'] : null;
+            $this->authHospitalMode = isset($user['gateway_mode']) ? (string) $user['gateway_mode'] : null;
+            $this->authPrincipal = isset($user['username']) ? (string) $user['username'] : 'hospital_user';
+            $this->touchHospitalUserLogin($this->authUserId);
+
+            return 'valid';
+        }
+
+        return 'invalid_format';
+    }
+
+    /**
+     * Generate Request ID
+     */
+    protected function generateRequestId()
+    {
+        return 'REQ-' . date('YmdHis') . '-' . substr(md5(random_bytes(16)), 0, 8);
+    }
+
+    /**
+     * Log Request
+     */
+    protected function logRequest($requestId, $method, $endpoint, $statusCode, $authStatus, $errorMessage = null, $responseTime = 0)
+    {
+        if ($this->isTestMode() || $this->requestLog === null) {
+            return;
+        }
+
+        try {
+            $this->requestLog->insert([
+                'request_id' => $requestId,
+                'method' => $method,
+                'endpoint' => $endpoint,
+                'status_code' => $statusCode,
+                'response_time_ms' => $responseTime,
+                'ip_address' => $this->request->getIPAddress(),
+                'authorization_status' => $authStatus,
+                'error_message' => $errorMessage,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+        } catch (\Throwable $e) {
+            // Silently fail - don't break the API
+            log_message('error', 'Failed to log request: ' . $e->getMessage());
+        }
+    }
+
+    protected function findHospitalUserByToken(string $token): ?array
+    {
+        $token = trim($token);
+        if ($token === '') {
+            return null;
+        }
+
+        $this->bootAuthRepository();
+
+        try {
+            $hash = hash('sha256', $token);
+
+            $row = $this->hospitalUser
+                ->select('abdm_hospital_users.id as user_id, abdm_hospital_users.hospital_id, abdm_hospital_users.username, abdm_hospital_users.password_hash, abdm_hospitals.gateway_mode')
+                ->join('abdm_hospitals', 'abdm_hospitals.id = abdm_hospital_users.hospital_id', 'inner')
+                ->where('abdm_hospital_users.api_token', $hash)
+                ->where('abdm_hospital_users.is_active', 1)
+                ->where('abdm_hospitals.is_active', 1)
+                ->first();
+
+            return is_object($row) ? (array) $row : (is_array($row) ? $row : null);
+        } catch (\Exception $e) {
+            log_message('error', 'Hospital token lookup failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    protected function findHospitalUserByUsername(string $username): ?array
+    {
+        $username = trim($username);
+        if ($username === '') {
+            return null;
+        }
+
+        $this->bootAuthRepository();
+
+        try {
+            $row = $this->hospitalUser
+                ->select('abdm_hospital_users.id as user_id, abdm_hospital_users.hospital_id, abdm_hospital_users.username, abdm_hospital_users.password_hash, abdm_hospitals.gateway_mode')
+                ->join('abdm_hospitals', 'abdm_hospitals.id = abdm_hospital_users.hospital_id', 'inner')
+                ->where('abdm_hospital_users.username', $username)
+                ->where('abdm_hospital_users.is_active', 1)
+                ->where('abdm_hospitals.is_active', 1)
+                ->first();
+
+            return is_object($row) ? (array) $row : (is_array($row) ? $row : null);
+        } catch (\Exception $e) {
+            log_message('error', 'Hospital username lookup failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    protected function touchHospitalUserLogin(?int $userId): void
+    {
+        if ($userId === null || $userId <= 0) {
+            return;
+        }
+
+        $this->bootAuthRepository();
+
+        try {
+            $this->hospitalUser->update($userId, ['last_login_at' => date('Y-m-d H:i:s')]);
+        } catch (\Exception $e) {
+            log_message('error', 'Failed to update last_login_at: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * @param array<string,mixed> $requestPayload
+     * @param array<string,mixed> $responsePayload
+     */
+    protected function logTestSubmission(
+        string $requestId,
+        string $endpoint,
+        array $requestPayload,
+        array $responsePayload,
+        int $httpStatus,
+        ?string $eventType = null
+    ): void {
+        if (!$this->isTestMode()) {
+            return;
+        }
+
+        $this->bootTestLogger();
+
+        try {
+            $this->testSubmissionLog->insert([
+                'request_id' => $requestId,
+                'hospital_id' => $this->authHospitalId,
+                'user_id' => $this->authUserId,
+                'event_type' => $eventType,
+                'endpoint' => $endpoint,
+                'http_status' => $httpStatus,
+                'request_payload' => json_encode($requestPayload),
+                'response_payload' => json_encode($responsePayload),
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+        } catch (\Exception $e) {
+            log_message('error', 'Failed to log test submission: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Check Database Status
+     */
+    protected function checkDatabase()
+    {
+        if ($this->isTestMode()) {
+            return 'skipped';
+        }
+
+        try {
+            $db = \Config\Database::connect();
+            $db->query('SELECT 1');
+            return 'ok';
+        } catch (\Exception $e) {
+            return 'unreachable';
+        }
+    }
+
+    /**
+     * Check ABDM M3 API
+     */
+    protected function checkAbdmM3()
+    {
+        if ($this->isTestMode()) {
+            return 'skipped';
+        }
+
+        try {
+            $url = config('AbdmGateway')->m3Url . '/health';
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 5,
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            return $httpCode === 200 ? 'ok' : 'unreachable';
+        } catch (\Exception $e) {
+            return 'unreachable';
+        }
+    }
+
+    /**
+     * Check SNOMED Service
+     */
+    protected function checkSnomedService()
+    {
+        if ($this->isTestMode()) {
+            return 'skipped';
+        }
+
+        try {
+            $url = config('AbdmGateway')->snomedUrl . '/health';
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 5,
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            return $httpCode === 200 ? 'ok' : 'unreachable';
+        } catch (\Exception $e) {
+            return 'unreachable';
+        }
+    }
+
+    protected function isTestMode(): bool
+    {
+        if ($this->authHospitalMode !== null) {
+            return strtolower($this->authHospitalMode) !== 'live';
+        }
+
+        return (bool) config('AbdmGateway')->testMode;
+    }
+
+    /**
+     * Generic pass-through proxy for ABDM M1 endpoints.
+     */
+    protected function proxyM1Endpoint(string $gatewayEndpoint, string $upstreamPath)
+    {
+        $requestId = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', $gatewayEndpoint, 403, $authStatus, 'Invalid or missing bearer token');
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0,
+                'error' => 'Invalid authorization token',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        $rawBody = (string) $this->request->getBody();
+        $trimmedBody = trim($rawBody);
+        $decodedBody = $trimmedBody === '' ? [] : json_decode($trimmedBody, true);
+
+        if ($trimmedBody !== '' && !is_array($decodedBody) && json_last_error() !== JSON_ERROR_NONE) {
+            $this->logRequest(
+                $requestId,
+                'POST',
+                $gatewayEndpoint,
+                400,
+                'valid',
+                'Invalid JSON body: ' . json_last_error_msg()
+            );
+
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0,
+                'error' => 'invalid_json',
+                'message' => 'Request body contains invalid JSON',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        $body = is_array($decodedBody) ? $decodedBody : [];
+
+        if ($this->isTestMode()) {
+            $mock = [
+                'ok' => 1,
+                'mode' => 'test',
+                'request_id' => $requestId,
+                'data' => [
+                    'gateway_endpoint' => $gatewayEndpoint,
+                    'upstream_path' => $upstreamPath,
+                    'message' => 'Mock response in test mode',
+                ],
+            ];
+
+            $this->logTestSubmission(
+                $requestId,
+                $gatewayEndpoint,
+                $body,
+                $mock,
+                200,
+                'abdm.m1.proxy'
+            );
+
+            return $this->response->setJSON($mock);
+        }
+
+        $this->bootRepositories();
+        $startTime = microtime(true);
+
+        try {
+            $m1BaseUrl = rtrim((string) config('AbdmGateway')->m1BaseUrl, '/');
+            $abdmUrl = $m1BaseUrl . '/' . ltrim($upstreamPath, '/');
+            $abdmToken = $this->getAbdmAccessToken();
+
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $abdmUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => (int) config('AbdmGateway')->m3Timeout,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => json_encode($body),
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer ' . $abdmToken,
+                    'Content-Type: application/json',
+                    'Accept: application/json',
+                    'X-Client-ID: ' . config('AbdmGateway')->sourceCode,
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+
+            $rawResponse = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlError) {
+                throw new \RuntimeException($curlError);
+            }
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $gatewayEndpoint, $httpCode, 'valid', null, $responseTime);
+
+            $decoded = json_decode((string) $rawResponse, true);
+            $payload = is_array($decoded)
+                ? $decoded
+                : ['raw_response' => trim((string) $rawResponse)];
+
+            return $this->response->setStatusCode($httpCode)->setJSON([
+                'ok' => $httpCode >= 200 && $httpCode < 300 ? 1 : 0,
+                'data' => $payload,
+                'request_id' => $requestId,
+            ]);
+        } catch (\Throwable $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $gatewayEndpoint, 500, 'valid', $e->getMessage(), $responseTime);
+
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0,
+                'error' => $e->getMessage(),
+                'request_id' => $requestId,
+            ]);
+        }
+    }
+
+    /**
+     * Resolve ABDM access token.
+     * Priority:
+     * 1) Static ABDM_TOKEN (legacy)
+     * 2) Client credentials using ABDM_CLIENT_ID/ABDM_CLIENT_SECRET
+     */
+    protected function getAbdmAccessToken(): string
+    {
+        if ($this->cachedAbdmToken !== null && $this->cachedAbdmToken !== '') {
+            return $this->cachedAbdmToken;
+        }
+
+        $cfg = config('AbdmGateway');
+
+        $staticToken = trim((string) ($cfg->m3Token ?? ''));
+        if ($staticToken !== '') {
+            $this->cachedAbdmToken = $staticToken;
+            return $this->cachedAbdmToken;
+        }
+
+        $clientId = trim((string) ($cfg->abdmClientId ?? ''));
+        $clientSecret = trim((string) ($cfg->abdmClientSecret ?? ''));
+        $authUrl = trim((string) ($cfg->abdmAuthUrl ?? ''));
+
+        if ($clientId === '' || $clientSecret === '' || $authUrl === '') {
+            throw new \RuntimeException('ABDM auth is not configured. Set ABDM_TOKEN or ABDM_CLIENT_ID/ABDM_CLIENT_SECRET/ABDM_AUTH_URL.');
+        }
+
+        $payload = [
+            'clientId' => $clientId,
+            'clientSecret' => $clientSecret,
+        ];
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $authUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($payload),
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'Accept: application/json',
+            ],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError) {
+            throw new \RuntimeException('ABDM auth curl error: ' . $curlError);
+        }
+
+        $decoded = json_decode((string) $response, true);
+        $token = '';
+        if (is_array($decoded)) {
+            $token = (string) ($decoded['accessToken'] ?? $decoded['token'] ?? $decoded['authToken'] ?? '');
+        }
+
+        if ($httpCode < 200 || $httpCode >= 300 || $token === '') {
+            $preview = is_string($response) ? substr($response, 0, 300) : '';
+            throw new \RuntimeException('ABDM auth failed (HTTP ' . $httpCode . '). Response: ' . $preview);
+        }
+
+        $this->cachedAbdmToken = $token;
+        return $this->cachedAbdmToken;
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    protected function resolveBridgeRoute(string $eventType, array $payload): array
+    {
+        switch ($eventType) {
+            case 'abdm.abha.validate':
+                return [
+                    'ok' => true,
+                    'method' => 'POST',
+                    'path' => '/api/v3/abha/validate',
+                    'body' => [
+                        'abha_id' => (string) ($payload['abha_id'] ?? ''),
+                        'abha_address' => (string) ($payload['abha_address'] ?? ''),
+                    ],
+                ];
+
+            case 'abdm.consent.requested':
+                return [
+                    'ok' => true,
+                    'method' => 'POST',
+                    'path' => '/api/v3/consent/request',
+                    'body' => [
+                        'patient_abha' => (string) ($payload['abha_id'] ?? $payload['patient_abha'] ?? ''),
+                        'purpose' => (string) ($payload['purpose_code'] ?? $payload['purpose'] ?? 'TREATMENT'),
+                        'hi_types' => $payload['hi_types'] ?? ['OPConsultation'],
+                    ],
+                ];
+
+            case 'abdm.fhir.share.requested':
+            case 'abdm.opd.prescription.share.requested':
+            case 'abdm.ipd.admission.share.requested':
+            case 'abdm.ipd.discharge.share.requested':
+            case 'abdm.diagnosis.report.share.requested':
+                return [
+                    'ok' => true,
+                    'method' => 'POST',
+                    'path' => '/api/v3/bundle/push',
+                    'body' => [
+                        'consent_id' => (string) ($payload['consent_handle'] ?? $payload['consent_id'] ?? 'CONS-BRIDGE'),
+                        'hi_type' => (string) ($payload['hi_type'] ?? 'OPConsultation'),
+                        'fhir_bundle' => $payload['bundle'] ?? $payload['fhir_bundle'] ?? [],
+                    ],
+                ];
+
+            case 'abdm.scan_share.lookup':
+                return [
+                    'ok' => true,
+                    'method' => 'GET',
+                    'path' => '/api/v3/snomed/search',
+                    'query' => [
+                        'term' => (string) ($payload['term'] ?? $payload['qr_payload'] ?? 'fever'),
+                        'return_limit' => (string) ($payload['return_limit'] ?? '10'),
+                    ],
+                ];
+
+            default:
+                return [
+                    'ok' => false,
+                    'error' => 'No bridge mapping for event_type: ' . $eventType,
+                ];
+        }
+    }
+
+    /**
+     * @param array<string,mixed> $route
+     * @return array<string,mixed>
+     */
+    protected function dispatchBridgeRoute(array $route): array
+    {
+        $method = strtoupper((string) ($route['method'] ?? 'POST'));
+        $path = (string) ($route['path'] ?? '');
+        $query = isset($route['query']) && is_array($route['query']) ? $route['query'] : [];
+        $body = isset($route['body']) && is_array($route['body']) ? $route['body'] : [];
+
+        $baseUrl = rtrim((string) (config('AbdmGateway')->publicUrl ?? 'http://127.0.0.1'), '/');
+        $url = $baseUrl . $path;
+        if ($method === 'GET' && $query !== []) {
+            $url .= '?' . http_build_query($query);
+        }
+
+        $ch = curl_init();
+        $headers = ['Content-Type: application/json'];
+
+        $bearer = trim((string) (config('AbdmGateway')->bearerToken ?? ''));
+        if ($bearer !== '') {
+            $headers[] = 'Authorization: Bearer ' . $bearer;
+        }
+
+        $curlOptions = [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_CUSTOMREQUEST => $method,
+        ];
+
+        if ($method !== 'GET') {
+            $curlOptions[CURLOPT_POSTFIELDS] = json_encode($body);
+        }
+
+        curl_setopt_array($ch, $curlOptions);
+
+        $raw = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError !== '') {
+            return [
+                'ok' => 0,
+                'http_code' => 500,
+                'error' => $curlError,
+                'target_url' => $url,
+            ];
+        }
+
+        $decoded = json_decode((string) $raw, true);
+
+        return [
+            'ok' => $httpCode >= 200 && $httpCode < 300 ? 1 : 0,
+            'http_code' => $httpCode,
+            'target_url' => $url,
+            'response' => is_array($decoded) ? $decoded : ['raw' => (string) $raw],
+        ];
+    }
+}

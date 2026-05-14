@@ -1,0 +1,50 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Dependencies
+vendor/
+node_modules/
+
+# Build
+dist/
+build/
+*.min.js
+*.min.css
+
+# Logs
+writable/logs/
+*.log
+
+# Temporary Files
+writable/tmp/
+writable/cache/
+writable/session/
+writable/debugbar/
+
+# Uploads (can be committed as symlink)
+public/uploads/
+writable/uploads/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PHP Unit
+coverage/
+.phpunit.result.cache
+
+# Debug
+.debug
+debug.log
