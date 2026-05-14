@@ -54,21 +54,21 @@ class AbdmGateway extends BaseConfig
      * ABDM auth token endpoint for client credentials flow
      * @var string
      */
-    public string $abdmAuthUrl = 'https://dev.abdm.gov.in/gateway/v0.5/sessions';
+    public string $abdmAuthUrl = 'https://dev.abdm.gov.in/api/hiecm/gateway/v3/sessions';
 
     /**
      * ABDM M1 Base URL (ABHA OTP and registration flow endpoints)
      * @var string
      */
-    public string $m1BaseUrl = 'https://healthidsbx.abdm.gov.in';
+    public string $m1BaseUrl = 'https://abhasbx.abdm.gov.in';
 
     /**
      * M1 endpoint paths for ABHA Aadhaar/Mobile OTP flows.
      */
-    public string $m1AadhaarGenerateOtpPath = '/api/v2/registration/aadhaar/generateOtp';
-    public string $m1AadhaarVerifyOtpPath = '/api/v2/registration/aadhaar/verifyOTP';
-    public string $m1MobileGenerateOtpPath = '/api/v2/registration/mobile/generateOtp';
-    public string $m1MobileVerifyOtpPath = '/api/v2/registration/mobile/verifyOTP';
+    public string $m1AadhaarGenerateOtpPath = '/abha/api/v3/enrollment/request/otp';
+    public string $m1AadhaarVerifyOtpPath = '/abha/api/v3/enrollment/enrol/byAadhaar';
+    public string $m1MobileGenerateOtpPath = '/abha/api/v3/enrollment/request/otp';
+    public string $m1MobileVerifyOtpPath = '/abha/api/v3/enrollment/enrol/byMobile';
 
     /**
      * ABDM M3 Timeout (seconds)

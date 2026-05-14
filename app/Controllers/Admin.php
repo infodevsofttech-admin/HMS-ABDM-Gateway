@@ -342,6 +342,7 @@ class Admin extends BaseController
         $txnId    = trim((string) $this->request->getPost('txn_id'));
         $otp      = trim((string) $this->request->getPost('otp'));
         $otpInput = trim((string) $this->request->getPost('otp_input'));
+        $mobile   = trim((string) $this->request->getPost('mobile'));   // required for Aadhaar verify (ABHA communication)
         $mode     = strtolower(trim((string) $this->request->getPost('mode')));
         $token    = $this->resolveGatewayToken();
 
@@ -363,17 +364,20 @@ class Admin extends BaseController
         }
 
         $path       = $otpType === 'mobile' ? 'api/v3/abha/mobile/verify-otp' : 'api/v3/abha/aadhaar/verify-otp';
-        $payload    = ['txnId' => $txnId, 'otp' => $otp];
+        $payload    = ['txnId' => $txnId, 'otp' => $otp, 'mobile' => $mobile];
         $reqPayload = ['mode' => $mode, 'payload' => $payload, 'otp_type' => $otpType, 'token_source' => 'server'];
 
         try {
-            $response   = $this->callGatewayEndpoint('POST', $path, $payload, $token);
-            $decoded    = $response['decoded'];
-            $profileData = is_array($decoded['data'] ?? null) ? $decoded['data'] : $decoded;
-            $requestId  = (string) ($decoded['request_id'] ?? '');
+            $response  = $this->callGatewayEndpoint('POST', $path, $payload, $token);
+            $decoded   = $response['decoded'];
+
+            // Handle both test-mode mock (data.abhaNumber) and ABDM v3 live (ABHAProfile.ABHANumber)
+            $profileData = is_array($decoded['data'] ?? null) ? $decoded['data']
+                : (is_array($decoded['ABHAProfile'] ?? null) ? $decoded['ABHAProfile'] : $decoded);
+            $requestId   = (string) ($decoded['request_id'] ?? '');
+            $abhaNumber  = (string) ($profileData['abhaNumber'] ?? $profileData['ABHANumber'] ?? $profileData['abha_id'] ?? '');
 
             $profileId = null;
-            $abhaNumber = (string) ($profileData['abhaNumber'] ?? $profileData['abha_id'] ?? $profileData['ABHANumber'] ?? '');
             if ($abhaNumber !== '' || $profileData !== []) {
                 try {
                     $profileId = $this->saveAbhaProfile($profileData, $abhaNumber, $requestId);
@@ -801,47 +805,257 @@ class Admin extends BaseController
 
     private function callGatewayEndpoint(string $method, string $path, array $payload, string $token): array
     {
-        // In test mode skip the HTTP self-call entirely and return a mock response.
+        // In test mode skip all external calls and return a mock response.
         if ((bool) config('AbdmGateway')->testMode) {
             return $this->mockGatewayResponse($path, $payload);
         }
 
-        $client = service('curlrequest', [
-            'baseURI' => rtrim((string) base_url('/'), '/') . '/',
-            'timeout' => 45,
-            'http_errors' => false,
-            'verify' => false,
-            'headers' => [
-                'Accept' => 'application/json',
-                'Authorization' => 'Bearer ' . $token,
-            ],
-        ]);
+        // Live mode: call ABDM v3 API directly (bypasses the internal HTTP proxy
+        // which times out because the server cannot make HTTPS self-connections).
+        return $this->callAbdmV3Direct($path, $payload);
+    }
 
-        $options = [];
-        if ($method === 'GET') {
-            if ($payload !== []) {
-                $options['query'] = $payload;
+    /**
+     * Call the ABDM v3 API directly, transforming our internal path/payload into
+     * the correct ABDM v3 request format including RSA-OAEP encryption.
+     */
+    private function callAbdmV3Direct(string $internalPath, array $payload): array
+    {
+        $abdmToken = $this->fetchAbdmTokenForAdmin();
+        $baseUrl   = 'https://abhasbx.abdm.gov.in';
+        $requestId = sprintf(
+            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000,
+            mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
+        $timestamp = gmdate('Y-m-d\TH:i:s.000\Z');
+
+        if (str_contains($internalPath, 'generate-otp')) {
+            $isAadhaar = !str_contains($internalPath, 'mobile');
+            $publicKey = $this->fetchAbdmPublicKey($abdmToken);
+            $loginIdRaw = $isAadhaar ? ($payload['aadhaar'] ?? '') : ($payload['mobile'] ?? '');
+            $body = [
+                'txnId'     => '',
+                'scope'     => $isAadhaar ? ['abha-enrol'] : ['abha-enrol', 'mobile-verify'],
+                'loginHint' => $isAadhaar ? 'aadhaar' : 'mobile',
+                'loginId'   => $this->encryptForAbdm($loginIdRaw, $publicKey),
+                'otpSystem' => $isAadhaar ? 'aadhaar' : 'abdm',
+            ];
+            $abdmUrl = $baseUrl . '/abha/api/v3/enrollment/request/otp';
+
+        } elseif (str_contains($internalPath, 'verify-otp')) {
+            $isAadhaar = !str_contains($internalPath, 'mobile');
+            $publicKey = $this->fetchAbdmPublicKey($abdmToken);
+            $encOtp    = $this->encryptForAbdm((string) ($payload['otp'] ?? ''), $publicKey);
+
+            if ($isAadhaar) {
+                $body = [
+                    'authData' => [
+                        'authMethods' => ['otp'],
+                        'otp' => [
+                            'txnId'    => (string) ($payload['txnId'] ?? ''),
+                            'otpValue' => $encOtp,
+                            'mobile'   => (string) ($payload['mobile'] ?? ''),
+                        ],
+                    ],
+                    'consent' => ['code' => 'abha-enrollment', 'version' => '1.4'],
+                ];
+                $abdmUrl = $baseUrl . '/abha/api/v3/enrollment/enrol/byAadhaar';
+            } else {
+                $body = [
+                    'authData' => [
+                        'authMethods' => ['otp'],
+                        'otp' => [
+                            'txnId'    => (string) ($payload['txnId'] ?? ''),
+                            'otpValue' => $encOtp,
+                        ],
+                    ],
+                    'consent' => ['code' => 'abha-enrollment', 'version' => '1.4'],
+                ];
+                $abdmUrl = $baseUrl . '/abha/api/v3/enrollment/enrol/byMobile';
             }
         } else {
-            $options['json'] = $payload;
+            throw new \RuntimeException('Unknown internal path for ABDM direct call: ' . $internalPath);
         }
 
-        $response = $client->request($method, $path, $options);
-        $body = (string) $response->getBody();
-        $decoded = json_decode($body, true);
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $abdmUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($body),
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Authorization: Bearer ' . $abdmToken,
+                'REQUEST-ID: ' . $requestId,
+                'TIMESTAMP: ' . $timestamp,
+            ],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
 
-        if ($response->getStatusCode() >= 400) {
-            $message = is_array($decoded)
-                ? (string) ($decoded['error'] ?? $decoded['message'] ?? 'Gateway request failed.')
-                : 'Gateway request failed.';
-            throw new \RuntimeException($message);
+        $raw      = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr !== '') {
+            throw new \RuntimeException('ABDM API connection failed: ' . $curlErr);
+        }
+
+        $decoded = json_decode((string) $raw, true);
+
+        if ($httpCode >= 400) {
+            $msg = is_array($decoded)
+                ? ($decoded['message'] ?? (is_array($decoded['error'] ?? null) ? ($decoded['error']['message'] ?? 'ABDM error') : ($decoded['error'] ?? 'ABDM API error')))
+                : 'ABDM API error (HTTP ' . $httpCode . ')';
+            throw new \RuntimeException(is_string($msg) ? $msg : json_encode($msg));
         }
 
         return [
-            'statusCode' => $response->getStatusCode(),
-            'body' => $body,
-            'decoded' => is_array($decoded) ? $decoded : ['raw' => $body],
+            'statusCode' => $httpCode,
+            'body'       => (string) $raw,
+            'decoded'    => is_array($decoded) ? $decoded : ['raw' => (string) $raw],
         ];
+    }
+
+    /**
+     * Fetch an ABDM access token using client credentials (with short-lived cache).
+     */
+    private function fetchAbdmTokenForAdmin(): string
+    {
+        $cache  = service('cache');
+        $cached = $cache->get('abdm_access_token_admin');
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $cfg          = config('AbdmGateway');
+        $clientId     = (string) ($cfg->abdmClientId ?: env('ABDM_CLIENT_ID', ''));
+        $clientSecret = (string) ($cfg->abdmClientSecret ?: env('ABDM_CLIENT_SECRET', ''));
+
+        if ($clientId === '' || $clientSecret === '') {
+            throw new \RuntimeException('ABDM client credentials not configured (ABDM_CLIENT_ID / ABDM_CLIENT_SECRET).');
+        }
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => 'https://dev.abdm.gov.in/api/hiecm/gateway/v3/sessions',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode([
+                'clientId'     => $clientId,
+                'clientSecret' => $clientSecret,
+                'grantType'    => 'client_credentials',
+            ]),
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'REQUEST-ID: ' . bin2hex(random_bytes(16)),
+                'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+                'X-CM-ID: sbx',
+            ],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+
+        $raw      = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr !== '') {
+            throw new \RuntimeException('ABDM session API connection failed: ' . $curlErr);
+        }
+
+        $data = json_decode((string) $raw, true);
+
+        if ($httpCode !== 200 || !is_array($data) || empty($data['accessToken'])) {
+            $msg = is_array($data) ? ($data['message'] ?? $data['error'] ?? 'Auth failed') : ('HTTP ' . $httpCode);
+            throw new \RuntimeException('ABDM token fetch failed: ' . (is_string($msg) ? $msg : json_encode($msg)));
+        }
+
+        $token = (string) $data['accessToken'];
+        $ttl   = max(60, (int) ($data['expiresIn'] ?? 1800) - 60);
+        $cache->save('abdm_access_token_admin', $token, $ttl);
+
+        return $token;
+    }
+
+    /**
+     * Fetch the ABDM RSA public key from the certificate API (cached 24 h).
+     */
+    private function fetchAbdmPublicKey(string $abdmToken): string
+    {
+        $cache  = service('cache');
+        $cached = $cache->get('abdm_public_key_v3');
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => 'https://abhasbx.abdm.gov.in/abha/api/v3/profile/public/certificate',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_HTTPHEADER     => [
+                'Accept: application/json',
+                'Authorization: Bearer ' . $abdmToken,
+                'REQUEST-ID: ' . bin2hex(random_bytes(16)),
+                'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+            ],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+
+        $raw      = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr !== '' || $httpCode !== 200) {
+            throw new \RuntimeException('Failed to fetch ABDM public certificate (HTTP ' . $httpCode . ')' . ($curlErr !== '' ? ': ' . $curlErr : '.'));
+        }
+
+        $data = json_decode((string) $raw, true);
+
+        if (is_array($data)) {
+            $rawKey = (string) ($data['publicKey'] ?? $data['Certificate'] ?? $data['certificate'] ?? '');
+        } else {
+            $rawKey = trim((string) $raw);
+        }
+
+        if ($rawKey === '') {
+            throw new \RuntimeException('ABDM cert API returned empty key. Response: ' . substr((string) $raw, 0, 200));
+        }
+
+        // Normalise: wrap bare base64 in PEM headers if needed
+        if (strpos($rawKey, '-----BEGIN') === false) {
+            $rawKey = "-----BEGIN PUBLIC KEY-----\n" . chunk_split(trim($rawKey), 64, "\n") . "-----END PUBLIC KEY-----\n";
+        }
+
+        $cache->save('abdm_public_key_v3', $rawKey, 86400);
+
+        return $rawKey;
+    }
+
+    /**
+     * RSA-OAEP (SHA-1 / MGF1) encrypt a plain-text value with the ABDM public key.
+     */
+    private function encryptForAbdm(string $plainText, string $publicKeyPem): string
+    {
+        $key = openssl_get_publickey($publicKeyPem);
+        if ($key === false) {
+            throw new \RuntimeException('Invalid ABDM public key: ' . openssl_error_string());
+        }
+        $encrypted = '';
+        if (!openssl_public_encrypt($plainText, $encrypted, $key, OPENSSL_PKCS1_OAEP_PADDING)) {
+            throw new \RuntimeException('ABDM RSA encryption failed: ' . openssl_error_string());
+        }
+        return base64_encode($encrypted);
     }
 
     private function mockGatewayResponse(string $path, array $payload): array

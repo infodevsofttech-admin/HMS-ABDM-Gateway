@@ -98,6 +98,11 @@
                        value="<?= esc($txnId) ?>"
                        placeholder="auto-filled from OTP response" />
 
+                <?php if ($otpType === 'aadhaar'): ?>
+                <label for="mobile">Primary Mobile Number <span style="font-weight:400;color:#6b7280;">(for ABHA communication)</span></label>
+                <input type="tel" id="mobile" name="mobile" maxlength="10" placeholder="10-digit mobile number" required />
+                <?php endif; ?>
+
                 <label for="otp">OTP</label>
                 <input type="text" id="otp" name="otp" maxlength="6" placeholder="123456" required autofocus />
 
