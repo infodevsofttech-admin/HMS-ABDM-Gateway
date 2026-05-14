@@ -67,6 +67,7 @@ $routes->group('admin', ['filter' => 'auth'], static function($routes) {
         $routes->get('m1/otp-flow', 'Admin::m1OtpFlow');
         $routes->post('m1/otp-generate', 'Admin::m1OtpGeneratePost');
         $routes->post('m1/otp-verify', 'Admin::m1OtpVerifyPost');
+        $routes->post('m1/otp-address-set', 'Admin::m1OtpAddressSetPost');
         $routes->get('m1/abha-profiles', 'Admin::m1AbhaProfiles');
         $routes->head('m1/abha-profiles', 'Admin::m1AbhaProfiles');
         $routes->get('m1/verify-flow', 'Admin::m1VerifyFlow');

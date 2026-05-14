@@ -259,14 +259,31 @@ class Admin extends BaseController
 
     public function m1OtpFlow()
     {
+        $step       = (int) (session()->getFlashdata('otp_step') ?: 1);
+        $abhaNumber = (string) (session()->getFlashdata('otp_abha_number') ?: '');
+
+        // Step 4: look up saved profile from DB by ABHA number
+        $resultProfile = session()->getFlashdata('otp_result_profile');
+        if ($step === 4 && $resultProfile === null && $abhaNumber !== '') {
+            $row = $this->abhaProfileModel->where('abha_number', $abhaNumber)->first();
+            if ($row !== null) {
+                $j = is_string($row->profile_json ?? null) ? json_decode($row->profile_json, true) : null;
+                $resultProfile = is_array($j) ? $j : (array) $row;
+            }
+        }
+
         return view('admin/m1/otp_flow', [
             'error'         => session()->getFlashdata('error'),
             'message'       => session()->getFlashdata('message'),
-            'step'          => (int) (session()->getFlashdata('otp_step') ?: 1),
+            'step'          => $step,
             'txnId'         => (string) (session()->getFlashdata('otp_txn_id') ?: ''),
             'otpType'       => (string) (session()->getFlashdata('otp_type') ?: 'aadhaar'),
             'otpInput'      => (string) (session()->getFlashdata('otp_input') ?: ''),
-            'resultProfile' => session()->getFlashdata('otp_result_profile'),
+            'resultProfile' => $resultProfile,
+            'suggestions'   => (array)  (session()->getFlashdata('otp_suggestions') ?: []),
+            'enrolTxnId'    => (string) (session()->getFlashdata('otp_enrol_txn_id') ?: ''),
+            'xToken'        => (string) (session()->getFlashdata('otp_x_token') ?: ''),
+            'abhaNumber'    => $abhaNumber,
         ]);
     }
 
@@ -394,15 +411,37 @@ class Admin extends BaseController
                 ['profile_id' => $profileId, 'response' => $decoded]
             );
 
-            $msg = 'OTP verified successfully.';
-            if ($profileId !== null) {
-                $msg .= ' ABHA profile saved (ID: ' . $profileId . ').';
+            // Extract X-Token and enrollment txnId from ABDM v3 response (not present in test mode)
+            $xToken     = (string) ($decoded['tokens']['token'] ?? '');
+            $enrolTxnId = (string) ($decoded['txnId'] ?? '');
+
+            // In live mode, fetch ABHA address suggestions for step 3
+            $suggestions = [];
+            if ($enrolTxnId !== '' && !(bool) config('AbdmGateway')->testMode) {
+                try {
+                    $suggestions = $this->fetchAbdmAddressSuggestions($enrolTxnId);
+                } catch (\Throwable $ex) {
+                    log_message('warning', 'ABHA address suggestions skipped: ' . $ex->getMessage());
+                }
             }
+
+            $msg = 'OTP verified. ABHA created successfully.';
+            if ($profileId !== null) {
+                $msg .= ' (Profile ID: ' . $profileId . ')';
+            }
+
+            // If we have suggestions or live mode, go to step 3 for address selection.
+            // In test mode (no real enrollment txnId), go directly to step 4.
+            $nextStep = (count($suggestions) > 0 || ($enrolTxnId !== '' && !(bool) config('AbdmGateway')->testMode)) ? 3 : 4;
 
             return redirect()->to('/admin/m1/otp-flow')
                 ->with('message', $msg)
-                ->with('otp_result_profile', $profileData)
-                ->with('otp_step', 3);
+                ->with('otp_result_profile', $nextStep === 4 ? $profileData : null)
+                ->with('otp_abha_number', $abhaNumber)
+                ->with('otp_x_token', $xToken)
+                ->with('otp_enrol_txn_id', $enrolTxnId)
+                ->with('otp_suggestions', $suggestions)
+                ->with('otp_step', $nextStep);
 
         } catch (\Throwable $e) {
             $this->storeM1Log(
@@ -492,6 +531,47 @@ class Admin extends BaseController
         } catch (\Throwable $e) {
             return $this->response->setStatusCode(500)->setBody('Error: ' . $e->getMessage());
         }
+    }
+
+    public function m1OtpAddressSetPost()
+    {
+        $enrolTxnId  = trim((string) $this->request->getPost('enrol_txn_id'));
+        $abhaAddress = trim((string) $this->request->getPost('abha_address'));
+        $xToken      = trim((string) $this->request->getPost('x_token'));
+        $abhaNumber  = trim((string) $this->request->getPost('abha_number'));
+        $skip        = $this->request->getPost('skip_address') !== null;
+
+        $message = 'ABHA created successfully.';
+
+        if (!$skip && $abhaAddress !== '') {
+            try {
+                $abdmToken = $this->fetchAbdmTokenForAdmin();
+                $this->abdmPost(
+                    'https://abhasbx.abdm.gov.in/abha/api/v3/enrollment/enrol/abha-address',
+                    ['txnId' => $enrolTxnId, 'abhaAddress' => $abhaAddress, 'preferred' => 1],
+                    $abdmToken,
+                    sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0x0fff)|0x4000, mt_rand(0,0x3fff)|0x8000, mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff)),
+                    gmdate('Y-m-d\TH:i:s.000\Z')
+                );
+                $message = 'ABHA address set to ' . $abhaAddress . '.';
+                if ($abhaNumber !== '') {
+                    $this->abhaProfileModel->where('abha_number', $abhaNumber)->set([
+                        'abha_address' => $abhaAddress,
+                        'phr_address'  => $abhaAddress,
+                        'updated_at'   => date('Y-m-d H:i:s'),
+                    ])->update();
+                }
+            } catch (\Throwable $e) {
+                log_message('warning', 'ABHA address set failed: ' . $e->getMessage());
+                $message = 'ABHA created. Address selection failed: ' . $e->getMessage();
+            }
+        }
+
+        return redirect()->to('/admin/m1/otp-flow')
+            ->with('message', $message)
+            ->with('otp_x_token', $xToken)
+            ->with('otp_abha_number', $abhaNumber)
+            ->with('otp_step', 4);
     }
 
     // -----------------------------------------------------------------------
@@ -1064,6 +1144,36 @@ class Admin extends BaseController
     // -----------------------------------------------------------------------
     // ABHA Verification private helpers
     // -----------------------------------------------------------------------
+
+    private function fetchAbdmAddressSuggestions(string $enrolTxnId): array
+    {
+        $abdmToken = $this->fetchAbdmTokenForAdmin();
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => 'https://abhasbx.abdm.gov.in/abha/api/v3/enrollment/enrol/suggestion',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_HTTPHEADER     => [
+                'Accept: application/json',
+                'Authorization: Bearer ' . $abdmToken,
+                'Transaction_Id: ' . $enrolTxnId,
+                'REQUEST-ID: ' . sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0x0fff)|0x4000, mt_rand(0,0x3fff)|0x8000, mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff)),
+                'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+            ],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+        $raw      = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode >= 400) {
+            throw new \RuntimeException('Suggestion API error (HTTP ' . $httpCode . '): ' . substr((string) $raw, 0, 200));
+        }
+        $decoded = json_decode((string) $raw, true);
+        // Returns: { "abhaAddressList": ["dev.singh@sbx", ...] }
+        $list = $decoded['abhaAddressList'] ?? $decoded['suggestions'] ?? $decoded['data'] ?? [];
+        return is_array($list) ? array_values(array_filter($list, 'is_string')) : [];
+    }
 
     private function callAbdmLoginRequestOtp(string $method, string $loginId): array
     {
