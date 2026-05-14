@@ -1112,25 +1112,68 @@ class Admin extends BaseController
 
     private function saveAbhaProfile(array $payload, string $fallbackAbhaId, string $requestId): int
     {
-        $abhaNumber = trim((string) ($payload['abhaNumber'] ?? $payload['abha_id'] ?? $fallbackAbhaId));
+        // Handle both ABDM v3 (ABHANumber) and older formats
+        $abhaNumber = trim((string) ($payload['ABHANumber'] ?? $payload['abhaNumber'] ?? $payload['abha_id'] ?? $fallbackAbhaId));
         if ($abhaNumber === '') {
             throw new \RuntimeException('ABHA number missing in validation response.');
         }
 
+        // Assemble full name from v3 parts or fall back to legacy fields
+        $firstName  = trim((string) ($payload['firstName']  ?? $payload['first_name']  ?? ''));
+        $middleName = trim((string) ($payload['middleName'] ?? $payload['middle_name'] ?? ''));
+        $lastName   = trim((string) ($payload['lastName']   ?? $payload['last_name']   ?? ''));
+        $fullName   = trim(implode(' ', array_filter([$firstName, $middleName, $lastName])));
+        if ($fullName === '') {
+            $fullName = trim((string) ($payload['name'] ?? $payload['fullName'] ?? $payload['full_name'] ?? ''));
+        }
+
+        // Primary PHR address (v3 returns phrAddress as array)
+        $phrRaw    = $payload['phrAddress'] ?? $payload['abhaAddress'] ?? $payload['abha_address'] ?? null;
+        $phrAddr   = is_array($phrRaw) ? ($phrRaw[0] ?? '') : (string) ($phrRaw ?? '');
+
+        // DOB / year
+        $dob = trim((string) ($payload['dob'] ?? $payload['dateOfBirth'] ?? $payload['date_of_birth'] ?? ''));
+        $yob = '';
+        if ($dob !== '') {
+            // Format can be DD-MM-YYYY (ABDM v3) or YYYY-MM-DD
+            if (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $dob, $m)) {
+                $yob = $m[3];
+            } elseif (preg_match('/^(\d{4})/', $dob, $m)) {
+                $yob = $m[1];
+            }
+        }
+        if ($yob === '') {
+            $yob = trim((string) ($payload['yearOfBirth'] ?? $payload['year_of_birth'] ?? ''));
+        }
+
         $row = [
-            'hospital_id' => session('hospital_id') ?: null,
-            'user_id' => session('user_id') ?: null,
-            'abha_number' => $abhaNumber,
-            'abha_address' => (string) ($payload['abhaAddress'] ?? $payload['abha_address'] ?? ''),
-            'full_name' => (string) ($payload['name'] ?? $payload['fullName'] ?? $payload['full_name'] ?? ''),
-            'gender' => (string) ($payload['gender'] ?? ''),
-            'mobile' => (string) ($payload['mobile'] ?? $payload['mobileNumber'] ?? ''),
-            'date_of_birth' => (string) ($payload['dateOfBirth'] ?? $payload['dob'] ?? ''),
-            'year_of_birth' => (string) ($payload['yearOfBirth'] ?? $payload['year_of_birth'] ?? ''),
-            'status' => 'verified',
+            'hospital_id'     => session('hospital_id') ?: null,
+            'user_id'         => session('user_id') ?: null,
+            'abha_number'     => $abhaNumber,
+            'abha_address'    => $phrAddr,
+            'phr_address'     => $phrAddr,
+            'full_name'       => $fullName,
+            'first_name'      => $firstName,
+            'middle_name'     => $middleName,
+            'last_name'       => $lastName,
+            'gender'          => strtoupper(trim((string) ($payload['gender'] ?? ''))),
+            'mobile'          => trim((string) ($payload['mobile'] ?? $payload['mobileNumber'] ?? '')),
+            'email'           => trim((string) ($payload['email'] ?? '')) ?: null,
+            'mobile_verified' => !empty($payload['mobileVerified']) ? 1 : 0,
+            'date_of_birth'   => $dob,
+            'year_of_birth'   => $yob,
+            'address'         => trim((string) ($payload['address'] ?? $payload['preferredAddress'] ?? '')) ?: null,
+            'pin_code'        => trim((string) ($payload['pinCode'] ?? $payload['pin_code'] ?? '')) ?: null,
+            'state_code'      => trim((string) ($payload['stateCode'] ?? $payload['state_code'] ?? '')) ?: null,
+            'state_name'      => trim((string) ($payload['stateName'] ?? $payload['state_name'] ?? '')) ?: null,
+            'district_code'   => trim((string) ($payload['districtCode'] ?? $payload['district_code'] ?? '')) ?: null,
+            'district_name'   => trim((string) ($payload['districtName'] ?? $payload['district_name'] ?? '')) ?: null,
+            'abha_type'       => trim((string) ($payload['abhaType'] ?? $payload['abha_type'] ?? '')) ?: null,
+            'abha_status'     => trim((string) ($payload['abhaStatus'] ?? $payload['abha_status'] ?? 'ACTIVE')),
+            'status'          => 'verified',
             'last_request_id' => $requestId,
-            'last_verified_at' => date('Y-m-d H:i:s'),
-            'profile_json' => $this->encodeJson($payload),
+            'last_verified_at'=> date('Y-m-d H:i:s'),
+            'profile_json'    => $this->encodeJson($payload),
         ];
 
         $existing = $this->abhaProfileModel->where('abha_number', $abhaNumber)->first();
