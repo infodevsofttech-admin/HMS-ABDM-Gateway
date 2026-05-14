@@ -801,10 +801,16 @@ class Admin extends BaseController
 
     private function callGatewayEndpoint(string $method, string $path, array $payload, string $token): array
     {
+        // In test mode skip the HTTP self-call entirely and return a mock response.
+        if ((bool) config('AbdmGateway')->testMode) {
+            return $this->mockGatewayResponse($path, $payload);
+        }
+
         $client = service('curlrequest', [
             'baseURI' => rtrim((string) base_url('/'), '/') . '/',
             'timeout' => 45,
             'http_errors' => false,
+            'verify' => false,
             'headers' => [
                 'Accept' => 'application/json',
                 'Authorization' => 'Bearer ' . $token,
@@ -835,6 +841,49 @@ class Admin extends BaseController
             'statusCode' => $response->getStatusCode(),
             'body' => $body,
             'decoded' => is_array($decoded) ? $decoded : ['raw' => $body],
+        ];
+    }
+
+    private function mockGatewayResponse(string $path, array $payload): array
+    {
+        $requestId = 'MOCK-' . date('YmdHis') . '-' . substr(md5(uniqid('', true)), 0, 8);
+
+        if (str_contains($path, 'generate-otp')) {
+            $data = [
+                'ok'         => 1,
+                'mode'       => 'test',
+                'request_id' => $requestId,
+                'txnId'      => 'TXN-MOCK-' . date('YmdHis'),
+                'data'       => ['message' => 'Mock OTP dispatched (test mode). Enter any 6-digit OTP to continue.'],
+            ];
+        } elseif (str_contains($path, 'verify-otp')) {
+            $data = [
+                'ok'         => 1,
+                'mode'       => 'test',
+                'request_id' => $requestId,
+                'txnId'      => 'TXN-MOCK-VERIFIED-' . date('YmdHis'),
+                'data'       => [
+                    'abhaNumber'  => '91-' . rand(1000, 9999) . '-' . rand(1000, 9999) . '-' . rand(1000, 9999),
+                    'name'        => 'Test Patient (Mock)',
+                    'gender'      => 'M',
+                    'yearOfBirth' => '1990',
+                    'mobile'      => $payload['mobile'] ?? '9999999999',
+                    'message'     => 'Mock OTP verified in test mode.',
+                ],
+            ];
+        } else {
+            $data = [
+                'ok'         => 1,
+                'mode'       => 'test',
+                'request_id' => $requestId,
+                'data'       => ['message' => 'Mock response in test mode'],
+            ];
+        }
+
+        return [
+            'statusCode' => 200,
+            'body'       => json_encode($data),
+            'decoded'    => $data,
         ];
     }
 
