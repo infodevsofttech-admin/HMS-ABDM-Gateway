@@ -624,6 +624,25 @@ class Hospital extends BaseController
         return redirect()->to('/portal/tickets/' . $id)->with('message', 'Reply sent.');
     }
 
+    public function ticketClosePost(int $id)
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid         = $this->hospitalId();
+        $ticketModel = new SupportTicket();
+        $ticket      = $ticketModel->where('id', $id)->where('hospital_id', $hid)->first();
+
+        if ($ticket === null) {
+            return redirect()->to('/portal/tickets')->with('error', 'Ticket not found.');
+        }
+        if ($ticket->status === 'closed') {
+            return redirect()->to('/portal/tickets/' . $id)->with('error', 'Ticket is already closed.');
+        }
+
+        $ticketModel->update($id, ['status' => 'closed']);
+        return redirect()->to('/portal/tickets/' . $id)->with('message', 'Ticket closed successfully.');
+    }
+
     public function ticketAttachmentDownload(int $attachId)
     {
         if (!$this->guardHospital()) return $this->redirectUnauth();

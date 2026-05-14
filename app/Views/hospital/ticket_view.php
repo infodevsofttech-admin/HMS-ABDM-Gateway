@@ -158,6 +158,16 @@ function attachIcon(string $mime): string {
             <a href="/portal/tickets" class="btn btn-outline-secondary btn-sm btn-block" style="font-size:12px;">
                 <i class="fas fa-arrow-left mr-1"></i> Back to All Tickets
             </a>
+            <?php if (!$isClosed): ?>
+            <form method="post" action="/portal/tickets/<?= (int)$ticket->id ?>/close"
+                  onsubmit="return confirm('Close this ticket? You can contact support again by opening a new ticket.')"
+                  style="margin-top:8px;">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-outline-danger btn-sm btn-block" style="font-size:12px;">
+                    <i class="fas fa-times-circle mr-1"></i> Close Ticket
+                </button>
+            </form>
+            <?php endif; ?>
         </div>
     </div>
 </div>

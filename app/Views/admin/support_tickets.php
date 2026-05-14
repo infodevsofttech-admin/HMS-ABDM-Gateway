@@ -6,6 +6,7 @@
 <?php
 $tickets        = $tickets ?? [];
 $counts         = $counts  ?? ['open'=>0,'in_progress'=>0,'resolved'=>0,'closed'=>0];
+$staleCount     = $staleCount ?? 0;
 $filterStatus   = $filterStatus ?? '';
 $filterPriority = $filterPriority ?? '';
 
@@ -27,11 +28,21 @@ $priorityColors = [
         <h3><i class="fa fa-ticket"></i> Support Tickets</h3>
     </div>
     <div class="title_right">
-        <div class="pull-right">
-            <span class="label label-info" style="font-size:13px;padding:5px 12px;margin-right:4px;">Open: <?= (int)$counts['open'] ?></span>
-            <span class="label label-warning" style="font-size:13px;padding:5px 12px;margin-right:4px;">In Progress: <?= (int)$counts['in_progress'] ?></span>
-            <span class="label label-success" style="font-size:13px;padding:5px 12px;margin-right:4px;">Resolved: <?= (int)$counts['resolved'] ?></span>
+        <div class="pull-right" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span class="label label-info" style="font-size:13px;padding:5px 12px;">Open: <?= (int)$counts['open'] ?></span>
+            <span class="label label-warning" style="font-size:13px;padding:5px 12px;">In Progress: <?= (int)$counts['in_progress'] ?></span>
+            <span class="label label-success" style="font-size:13px;padding:5px 12px;">Resolved: <?= (int)$counts['resolved'] ?></span>
             <span class="label label-default" style="font-size:13px;padding:5px 12px;">Closed: <?= (int)$counts['closed'] ?></span>
+            <?php if ($staleCount > 0): ?>
+            <form method="post" action="/admin/support/close-stale"
+                  onsubmit="return confirm('Close <?= (int)$staleCount ?> ticket(s) with no activity for 7+ days?')"
+                  style="margin:0;">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-warning btn-sm" style="font-size:12px;">
+                    <i class="fa fa-clock-o"></i> Close Stale (<?= (int)$staleCount ?>)
+                </button>
+            </form>
+            <?php endif; ?>
         </div>
     </div>
 </div>
@@ -102,8 +113,21 @@ $priorityColors = [
                     </thead>
                     <tbody>
                     <?php foreach ($tickets as $t): ?>
-                    <tr>
-                        <td><code style="font-size:11px;"><?= esc($t->ticket_number) ?></code></td>
+                    <?php
+                        $sl = $statusLabel[$t->status]   ?? ['label'=>$t->status,   'class'=>'hb-blue'];
+                        $pl = $priorityLabel[$t->priority] ?? ['label'=>$t->priority, 'style'=>''];
+                        $lastActivity = $t->last_reply_at ?? $t->created_at ?? null;
+                        $isStale = !in_array($t->status, ['closed','resolved'], true)
+                            && $lastActivity !== null
+                            && strtotime($lastActivity) < strtotime('-7 days');
+                    ?>
+                    <tr <?= $isStale ? 'style="background:#fffbea;"' : '' ?>>
+                        <td>
+                            <code style="font-size:11px;"><?= esc($t->ticket_number) ?></code>
+                            <?php if ($isStale): ?>
+                            <span class="label label-warning" style="font-size:10px;" title="No activity for 7+ days"><i class="fa fa-clock-o"></i> Stale</span>
+                            <?php endif; ?>
+                        </td>
                         <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                             <?= esc((string)($t->hospital_name ?? '—')) ?>
                         </td>

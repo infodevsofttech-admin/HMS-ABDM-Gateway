@@ -1942,6 +1942,7 @@ class Admin extends BaseController
         return view('admin/support_tickets', [
             'tickets'       => $tickets,
             'counts'        => $counts,
+            'staleCount'    => $ticketModel->countStale(),
             'filterStatus'  => $status,
             'filterPriority'=> $priority,
         ]);
@@ -2043,6 +2044,30 @@ class Admin extends BaseController
             ->setHeader('Content-Type', $attach->mime_type ?? 'application/octet-stream')
             ->setHeader('Content-Disposition', 'attachment; filename="' . $attach->original_name . '"')
             ->setBody(file_get_contents($path));
+    }
+
+    public function supportTicketClose(int $id)
+    {
+        $ticketModel = new SupportTicket();
+        $ticket      = $ticketModel->find($id);
+        if ($ticket === null) {
+            return redirect()->to('/admin/support')->with('error', 'Ticket not found.');
+        }
+        $ticketModel->update($id, ['status' => 'closed']);
+        return redirect()->to('/admin/support/' . $id)->with('message', 'Ticket closed.');
+    }
+
+    public function supportCloseStale()
+    {
+        $ticketModel = new SupportTicket();
+        $ticketModel->db->query(
+            "UPDATE abdm_support_tickets
+             SET status = 'closed', updated_at = NOW()
+             WHERE status NOT IN ('closed','resolved')
+               AND (last_reply_at IS NULL OR last_reply_at < DATE_SUB(NOW(), INTERVAL 7 DAY))"
+        );
+        $affected = $ticketModel->db->affectedRows();
+        return redirect()->to('/admin/support')->with('message', $affected . ' stale ticket(s) closed.');
     }
 
     private function processSupportAttachments(int $ticketId, int $msgId, string $uploaderType, SupportAttachment $attachModel): void

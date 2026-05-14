@@ -29,6 +29,7 @@ $routes->get('portal/tickets/new',      'Hospital::ticketNew',             ['fil
 $routes->post('portal/tickets/new',     'Hospital::ticketNewPost',         ['filter' => 'auth']);
 $routes->get('portal/tickets/(:num)',   'Hospital::ticketView/$1',         ['filter' => 'auth']);
 $routes->post('portal/tickets/(:num)/reply','Hospital::ticketReplyPost/$1',['filter' => 'auth']);
+$routes->post('portal/tickets/(:num)/close','Hospital::ticketClosePost/$1',  ['filter' => 'auth']);
 $routes->get('portal/tickets/attachment/(:num)', 'Hospital::ticketAttachmentDownload/$1', ['filter' => 'auth']);
 $routes->get('portal/logout',          'Hospital::logout');
 
@@ -126,8 +127,10 @@ $routes->group('admin', ['filter' => 'auth'], static function($routes) {
 
     // Support Tickets
     $routes->get('support', 'Admin::supportTickets');
+    $routes->post('support/close-stale', 'Admin::supportCloseStale');
     $routes->get('support/(:num)', 'Admin::supportTicketView/$1');
     $routes->post('support/(:num)/reply', 'Admin::supportTicketReplyPost/$1');
+    $routes->post('support/(:num)/close', 'Admin::supportTicketClose/$1');
     $routes->get('support/attachment/(:num)', 'Admin::supportAttachmentDownload/$1');
 });
 

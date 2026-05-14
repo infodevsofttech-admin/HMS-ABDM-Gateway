@@ -191,6 +191,19 @@ function adminAttachIcon(string $mime): string {
                 <?php endforeach; ?>
             </div>
         </div>
+        <?php if ($ticket->status !== 'closed'): ?>
+        <form method="post" action="/admin/support/<?= (int)$ticket->id ?>/close"
+              onsubmit="return confirm('Close this ticket permanently?')" style="margin-top:0;">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn btn-danger btn-block" style="font-size:13px;">
+                <i class="fa fa-times-circle"></i> Close Ticket
+            </button>
+        </form>
+        <?php else: ?>
+        <div class="alert alert-default" style="font-size:13px;text-align:center;margin-top:0;">
+            <i class="fa fa-lock"></i> Ticket is Closed
+        </div>
+        <?php endif; ?>
     </div>
 </div>
 

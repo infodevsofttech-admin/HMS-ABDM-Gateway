@@ -29,6 +29,17 @@ class SupportTicket extends Model
         return $prefix . str_pad($next, 4, '0', STR_PAD_LEFT);
     }
 
+    /** Count open/in-progress tickets with no activity for 7+ days */
+    public function countStale(): int
+    {
+        $row = $this->db->query(
+            "SELECT COUNT(*) AS cnt FROM abdm_support_tickets
+             WHERE status NOT IN ('closed','resolved')
+               AND (last_reply_at IS NULL OR last_reply_at < DATE_SUB(NOW(), INTERVAL 7 DAY))"
+        )->getRow();
+        return (int)($row->cnt ?? 0);
+    }
+
     /** Tickets with hospital name joined */
     public function withHospital()
     {
