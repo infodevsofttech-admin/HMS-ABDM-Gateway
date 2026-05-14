@@ -28,7 +28,7 @@
         }
         .login-header .brand-logo {
             display: block;
-            max-width: 160px;
+            max-width: 220px;
             width: 100%;
             height: auto;
             margin: 0 auto 10px;
