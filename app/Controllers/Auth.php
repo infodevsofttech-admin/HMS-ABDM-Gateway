@@ -4,32 +4,35 @@ namespace App\Controllers;
 
 use App\Models\AbdmHospitalUser;
 use App\Models\AbdmHospital;
+use App\Models\AdminUser;
 use CodeIgniter\Controller;
 
 class Auth extends Controller
 {
-    protected $userModel;
+    protected $userModel;        // hospital/clinic users
+    protected $adminUserModel;   // admin panel users
     protected $hospitalModel;
 
     public function __construct()
     {
-        $this->userModel = new AbdmHospitalUser();
-        $this->hospitalModel = new AbdmHospital();
+        $this->userModel      = new AbdmHospitalUser();
+        $this->adminUserModel = new AdminUser();
+        $this->hospitalModel  = new AbdmHospital();
     }
 
     public function login()
     {
-        return $this->handleLogin('/auth/login', 'hospital');
+        return $this->handleHospitalLogin('/auth/login');
     }
 
     public function hospitalLogin()
     {
-        return $this->handleLogin('/', 'hospital');
+        return $this->handleHospitalLogin('/');
     }
 
     public function adminLogin()
     {
-        return $this->handleLogin('/admin', 'admin');
+        return $this->handleAdminLogin();
     }
 
     public function register()
@@ -94,76 +97,105 @@ class Auth extends Controller
     public function logout()
     {
         session()->destroy();
-        return redirect()->to('/auth/login')->with('message', 'Logged out successfully.');
+        return redirect()->to('/admin')->with('message', 'Logged out successfully.');
     }
 
-    protected function handleLogin(string $formAction, string $portal)
+    // ----------------------------------------------------------------
+    // Admin panel login — uses admin_users table
+    // ----------------------------------------------------------------
+    protected function handleAdminLogin()
     {
-        $isAdminPortal = $portal === 'admin';
-
         if ($this->request->is('post')) {
             $username = trim((string) $this->request->getPost('username'));
             $password = trim((string) $this->request->getPost('password'));
-            $hfrId = trim((string) $this->request->getPost('hfr_id'));
 
             if (empty($username) || empty($password)) {
                 return redirect()->back()->with('error', 'Username and password are required.');
             }
 
-            if (!$isAdminPortal && $hfrId === '') {
-                return redirect()->back()->with('error', 'HFR ID or Hospital ID is required.');
-            }
-
-            $user = $this->userModel->where('username', $username)->where('is_active', 1)->first();
+            $user = $this->adminUserModel
+                ->where('username', $username)
+                ->where('is_active', 1)
+                ->first();
 
             if (!$user || !password_verify($password, $user->password_hash)) {
                 return redirect()->back()->with('error', 'Invalid username or password.');
             }
 
-            $role = (string) $user->role;
-            if ($isAdminPortal && !$this->isAdminRole($role)) {
-                return redirect()->back()->with('error', 'This account does not have admin portal access.');
+            $this->adminUserModel->update($user->id, ['last_login_at' => date('Y-m-d H:i:s')]);
+
+            session()->set([
+                'user_id'      => $user->id,
+                'username'     => $user->username,
+                'hospital_id'  => null,
+                'role'         => $user->role,
+                'portal'       => 'admin',
+                'is_logged_in' => true,
+            ]);
+
+            return redirect()->to('/admin/dashboard')->with('message', 'Welcome, ' . $user->username . '!');
+        }
+
+        return view('auth/admin_login');
+    }
+
+    // ----------------------------------------------------------------
+    // Hospital / Clinic portal login — uses abdm_hospital_users table
+    // ----------------------------------------------------------------
+    protected function handleHospitalLogin(string $formAction)
+    {
+        if ($this->request->is('post')) {
+            $username = trim((string) $this->request->getPost('username'));
+            $password = trim((string) $this->request->getPost('password'));
+            $hfrId    = trim((string) $this->request->getPost('hfr_id'));
+
+            if (empty($username) || empty($password)) {
+                return redirect()->back()->with('error', 'Username and password are required.');
             }
 
-            if (!$isAdminPortal && $this->isAdminRole($role)) {
-                return redirect()->back()->with('error', 'Please use the admin portal to login.');
+            if ($hfrId === '') {
+                return redirect()->back()->with('error', 'HFR ID or Hospital ID is required.');
             }
 
-            if (!$isAdminPortal) {
-                $hospital = $this->hospitalModel->find($user->hospital_id);
-                $hospitalHfrId = '';
-                if (is_object($hospital) && isset($hospital->hfr_id)) {
-                    $hospitalHfrId = (string) $hospital->hfr_id;
-                } elseif (is_array($hospital) && isset($hospital['hfr_id'])) {
-                    $hospitalHfrId = (string) $hospital['hfr_id'];
-                }
+            $user = $this->userModel
+                ->where('username', $username)
+                ->where('is_active', 1)
+                ->first();
 
-                if ($hospitalHfrId === '' || strcasecmp($hospitalHfrId, $hfrId) !== 0) {
-                    return redirect()->back()->with('error', 'Invalid HFR ID or Hospital ID.');
-                }
+            if (!$user || !password_verify($password, $user->password_hash)) {
+                return redirect()->back()->with('error', 'Invalid username or password.');
+            }
+
+            // Verify HFR ID matches the hospital this user belongs to
+            $hospital = $this->hospitalModel->find($user->hospital_id);
+            $hospitalHfrId = '';
+            if (is_object($hospital) && isset($hospital->hfr_id)) {
+                $hospitalHfrId = (string) $hospital->hfr_id;
+            } elseif (is_array($hospital) && isset($hospital['hfr_id'])) {
+                $hospitalHfrId = (string) $hospital['hfr_id'];
+            }
+
+            if ($hospitalHfrId === '' || strcasecmp($hospitalHfrId, $hfrId) !== 0) {
+                return redirect()->back()->with('error', 'Invalid HFR ID or Hospital ID.');
             }
 
             $this->userModel->update($user->id, ['last_login_at' => date('Y-m-d H:i:s')]);
 
             session()->set([
-                'user_id' => $user->id,
-                'username' => $user->username,
-                'hospital_id' => $user->hospital_id,
-                'role' => $user->role,
+                'user_id'      => $user->id,
+                'username'     => $user->username,
+                'hospital_id'  => $user->hospital_id,
+                'role'         => $user->role,
+                'portal'       => 'hospital',
                 'is_logged_in' => true,
             ]);
 
-            return redirect()->to('/admin/dashboard')->with('message', 'Login successful!');
+            return redirect()->to('/dashboard')->with('message', 'Login successful!');
         }
 
         return view('auth/login', [
             'formAction' => $formAction,
-            'portal' => $portal,
+            'portal'     => 'hospital',
         ]);
-    }
-
-    protected function isAdminRole(string $role): bool
-    {
-        return in_array(strtolower($role), ['admin', 'super_admin', 'service_provider'], true);
     }
 }

@@ -11,7 +11,12 @@ class AuthFilter implements FilterInterface
     public function before(RequestInterface $request, $arguments = null)
     {
         if (!session()->has('is_logged_in')) {
-            return redirect()->to('/auth/login')->with('error', 'Please login first.');
+            // Redirect to the appropriate login page based on the requested URL
+            $uri = (string) $request->getUri()->getPath();
+            if (str_starts_with($uri, '/admin') || str_starts_with($uri, 'admin')) {
+                return redirect()->to('/admin')->with('error', 'Please login to access the admin panel.');
+            }
+            return redirect()->to('/')->with('error', 'Please login first.');
         }
 
         return null;
