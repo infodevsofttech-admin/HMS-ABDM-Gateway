@@ -12,6 +12,10 @@ $routes->post('/', 'Auth::hospitalLogin');
 $routes->get('admin', 'Auth::adminLogin');
 $routes->post('admin', 'Auth::adminLogin');
 
+// Hospital portal (protected)
+$routes->get('dashboard', 'Hospital::dashboard', ['filter' => 'auth']);
+$routes->get('portal/logout', 'Hospital::logout');
+
 // Bridge ingress endpoint for HMS queue dispatch
 $routes->post('api/v1/bridge', 'AbdmGateway::bridgeDispatch');
 

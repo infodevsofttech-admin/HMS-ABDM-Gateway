@@ -1,0 +1,151 @@
+<?= $this->extend('layout/hospital_layout') ?>
+<?php $title = 'Dashboard'; ?>
+
+<?= $this->section('content') ?>
+
+<?php
+$hospital = $hospital ?? null;
+$hospitalName = is_object($hospital) ? ($hospital->hospital_name ?? 'Your Hospital')
+    : (is_array($hospital) ? ($hospital['hospital_name'] ?? 'Your Hospital') : 'Your Hospital');
+$hfrId = is_object($hospital) ? ($hospital->hfr_id ?? '')
+    : (is_array($hospital) ? ($hospital['hfr_id'] ?? '') : '');
+$mode = is_object($hospital) ? ($hospital->gateway_mode ?? 'test')
+    : (is_array($hospital) ? ($hospital['gateway_mode'] ?? 'test') : 'test');
+?>
+
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-home"></i> Dashboard <small><?= esc($hospitalName) ?></small></h3>
+    </div>
+    <div class="title_right">
+        <span class="label label-<?= $mode === 'live' ? 'danger' : 'info' ?>" style="font-size:12px;padding:5px 10px;">
+            <?= strtoupper(esc($mode)) ?> MODE
+        </span>
+    </div>
+</div>
+<div class="clearfix"></div>
+
+<!-- Hospital Info Banner -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="x_panel" style="background: linear-gradient(135deg, #2A3F54 0%, #1ABB9C 100%); color: #fff; border: 0;">
+            <div class="x_content" style="padding: 20px 24px;">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h2 style="margin:0 0 6px;font-size:22px;color:#fff;">
+                            <i class="fa fa-hospital-o"></i> <?= esc($hospitalName) ?>
+                        </h2>
+                        <?php if ($hfrId !== ''): ?>
+                        <p style="margin:0;opacity:.8;font-size:13px;">
+                            <i class="fa fa-id-card-o"></i> HFR ID: <strong><?= esc($hfrId) ?></strong>
+                            &nbsp;&nbsp;|&nbsp;&nbsp;
+                            <i class="fa fa-user"></i> <?= esc(session()->get('username')) ?>
+                            &nbsp;&nbsp;|&nbsp;&nbsp;
+                            <i class="fa fa-tag"></i> <?= esc(session()->get('role')) ?>
+                        </p>
+                        <?php endif; ?>
+                    </div>
+                    <div class="col-md-4 text-right" style="padding-top:8px;">
+                        <a href="/admin/m1/scan-share" class="btn btn-default btn-sm">
+                            <i class="fa fa-ticket"></i> Token Queue
+                        </a>
+                        <a href="/admin/m1/otp-flow" class="btn btn-default btn-sm" style="margin-left:6px;">
+                            <i class="fa fa-plus-circle"></i> New ABHA
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Action Cards -->
+<div class="row">
+    <div class="col-md-3 col-sm-6">
+        <div class="x_panel" style="text-align:center;cursor:pointer;" onclick="location.href='/admin/m1/abha-validate'">
+            <div class="x_content" style="padding:30px 20px;">
+                <i class="fa fa-search" style="font-size:36px;color:#3498DB;margin-bottom:12px;display:block;"></i>
+                <h4 style="margin:0 0 6px;">Validate ABHA</h4>
+                <p style="color:#6b7280;font-size:12px;margin:0;">Verify an ABHA number instantly</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="x_panel" style="text-align:center;cursor:pointer;" onclick="location.href='/admin/m1/otp-flow'">
+            <div class="x_content" style="padding:30px 20px;">
+                <i class="fa fa-plus-circle" style="font-size:36px;color:#1ABB9C;margin-bottom:12px;display:block;"></i>
+                <h4 style="margin:0 0 6px;">Create ABHA</h4>
+                <p style="color:#6b7280;font-size:12px;margin:0;">New patient via Aadhaar OTP</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="x_panel" style="text-align:center;cursor:pointer;" onclick="location.href='/admin/m1/verify-flow'">
+            <div class="x_content" style="padding:30px 20px;">
+                <i class="fa fa-check-circle" style="font-size:36px;color:#9B59B6;margin-bottom:12px;display:block;"></i>
+                <h4 style="margin:0 0 6px;">Verify ABHA</h4>
+                <p style="color:#6b7280;font-size:12px;margin:0;">Verify existing ABHA holder</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="x_panel" style="text-align:center;cursor:pointer;" onclick="location.href='/admin/m1/scan-share'">
+            <div class="x_content" style="padding:30px 20px;">
+                <i class="fa fa-ticket" style="font-size:36px;color:#E74C3C;margin-bottom:12px;display:block;"></i>
+                <h4 style="margin:0 0 6px;">OPD Queue</h4>
+                <p style="color:#6b7280;font-size:12px;margin:0;">Scan &amp; Share token list</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Patient Master -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-database"></i> Patient Master
+                    <small>verified ABHA profiles</small>
+                </h2>
+                <div class="clearfix"></div>
+            </div>
+            <div class="x_content">
+                <?php if (!empty($recentProfiles) && count($recentProfiles) > 0): ?>
+                <table class="table table-striped table-bordered">
+                    <thead>
+                        <tr>
+                            <th>ABHA Number</th>
+                            <th>Name</th>
+                            <th>Mobile</th>
+                            <th>Status</th>
+                            <th>Verified At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($recentProfiles as $p): ?>
+                        <tr>
+                            <td><strong style="color:#1d4ed8;font-family:monospace;"><?= esc((string)($p->abha_number ?? '')) ?></strong></td>
+                            <td><?= esc((string)($p->full_name ?? '')) ?></td>
+                            <td><?= esc((string)($p->mobile ?? '')) ?></td>
+                            <td>
+                                <?php $st = strtoupper((string)($p->abha_status ?? 'ACTIVE')); ?>
+                                <span class="label label-<?= $st === 'ACTIVE' ? 'success' : 'warning' ?>"><?= esc($st) ?></span>
+                            </td>
+                            <td style="font-size:12px;"><?= esc((string)($p->last_verified_at ?? '')) ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <p><a href="/admin/m1/abha-profiles">View all records →</a></p>
+                <?php else: ?>
+                <p class="text-muted" style="padding:20px 0;">
+                    No ABHA profiles yet.
+                    <a href="/admin/m1/otp-flow">Create the first one →</a>
+                </p>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?= $this->endSection() ?>

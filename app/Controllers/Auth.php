@@ -96,8 +96,10 @@ class Auth extends Controller
 
     public function logout()
     {
+        $portal = session()->get('portal');
         session()->destroy();
-        return redirect()->to('/admin')->with('message', 'Logged out successfully.');
+        $target = ($portal === 'hospital') ? '/' : '/admin';
+        return redirect()->to($target)->with('message', 'Logged out successfully.');
     }
 
     // ----------------------------------------------------------------
