@@ -268,9 +268,15 @@
         </div>
 
         <?php if ($xToken !== ''): ?>
-        <a class="dl-btn" href="/admin/m1/abha-card-download?x_token=<?= urlencode($xToken) ?>" target="_blank">
-            ⬇ Download ABHA Card
-        </a>
+        <div style="margin-top:20px;">
+            <p style="font-size:12px;color:#6b7280;margin-bottom:6px;">ABHA Card</p>
+            <img src="/admin/m1/abha-card?x_token=<?= urlencode($xToken) ?>"
+                 alt="ABHA Card"
+                 style="max-width:100%;border-radius:8px;border:1px solid #e5e7eb;display:block;"
+                 onerror="this.replaceWith(document.createTextNode('Card not available — token may have expired.'))">
+            <a href="/admin/m1/abha-card?x_token=<?= urlencode($xToken) ?>" download="abha-card"
+               style="display:inline-block;margin-top:8px;font-size:12px;color:#4f46e5;">⬇ Save card image</a>
+        </div>
         <?php endif; ?>
 
         <p style="margin-top:20px;">

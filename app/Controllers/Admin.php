@@ -429,6 +429,71 @@ class Admin extends BaseController
         ]);
     }
 
+    public function m1AbhaCard()
+    {
+        $xToken = trim((string) $this->request->getGet('x_token'));
+
+        if ($xToken === '') {
+            return $this->response->setStatusCode(400)->setBody('Missing x_token');
+        }
+
+        try {
+            $abdmToken = $this->fetchAbdmTokenForAdmin();
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => 'https://abhasbx.abdm.gov.in/abha/api/v3/profile/account/abha-card',
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 30,
+                CURLOPT_HEADER         => true,
+                CURLOPT_HTTPHEADER     => [
+                    'Accept: image/png, image/svg+xml, */*',
+                    'Authorization: Bearer ' . $abdmToken,
+                    'X-Token: Bearer ' . $xToken,
+                    'REQUEST-ID: ' . sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0x0fff)|0x4000, mt_rand(0,0x3fff)|0x8000, mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff)),
+                    'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $raw      = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            curl_close($ch);
+
+            $headers = substr((string) $raw, 0, $headerSize);
+            $body    = substr((string) $raw, $headerSize);
+
+            if ($httpCode >= 400) {
+                return $this->response->setStatusCode(502)->setBody('ABDM card API error (HTTP ' . $httpCode . '): ' . substr($body, 0, 300));
+            }
+
+            // Detect content type from response headers
+            $contentType = 'image/png';
+            if (preg_match('/content-type:\s*([^\r\n]+)/i', $headers, $m)) {
+                $contentType = trim($m[1]);
+            }
+
+            // If ABDM returned JSON with base64 image, decode it
+            if (str_contains($contentType, 'application/json') || str_contains($contentType, 'text/')) {
+                $decoded = json_decode($body, true);
+                if (is_array($decoded)) {
+                    $b64 = $decoded['image'] ?? $decoded['data'] ?? $decoded['abhaCard'] ?? null;
+                    if ($b64 !== null) {
+                        $body = base64_decode((string) $b64);
+                        $contentType = 'image/png';
+                    }
+                }
+            }
+
+            return $this->response
+                ->setHeader('Content-Type', $contentType)
+                ->setHeader('Cache-Control', 'no-store')
+                ->setBody($body);
+
+        } catch (\Throwable $e) {
+            return $this->response->setStatusCode(500)->setBody('Error: ' . $e->getMessage());
+        }
+    }
+
     // -----------------------------------------------------------------------
     // ABHA Verification Flow (for existing ABHA holders)
     // -----------------------------------------------------------------------
