@@ -1,55 +1,113 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>M1 Test Suite - ABDM Gateway</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; color: #111827; }
-        .card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-        .stack { display: grid; gap: 16px; }
-        a { color: #1d4ed8; text-decoration: none; font-weight: 600; }
-        ul { margin: 0; padding: 0 0 0 18px; }
-        li { margin-bottom: 10px; }
-    </style>
-</head>
-<body>
-    <h1>M1 Test Suite</h1>
-    <div class="stack">
-        <div class="card">
-            <h2>ABHA APIs</h2>
-            <ul>
-                <li><a href="/admin/m1/otp-flow">ABHA OTP Guided Flow (Aadhaar &amp; Mobile)</a> — <span style="font-size:12px;color:#6b7280;">Create new ABHA</span></li>
-                <li><a href="/admin/m1/verify-flow">ABHA Verification Flow</a> — <span style="font-size:12px;color:#6b7280;">Verify existing ABHA holders (ABHA Number / Mobile OTP)</span></li>
-                <li><a href="/admin/m1/abha-validate">ABHA Validate by ID (quick lookup)</a></li>
-                <li><a href="/admin/m1/abha-profiles">Saved ABHA Profiles (Patient Master)</a></li>
-            </ul>
-        </div>
-        <div class="card">
-            <h2>Scan &amp; Share (Health Facility QR)</h2>
-            <ul>
-                <li><a href="/admin/m1/scan-share">OPD Token Queue</a> — <span style="font-size:12px;color:#6b7280;">Patients who scanned today's facility QR</span></li>
-                <li><a href="/admin/m1/scan-share-setup">Setup / Register HIP</a> — <span style="font-size:12px;color:#6b7280;">Update bridge URL &amp; register as HIP with ABDM</span></li>
-            </ul>
-        </div>
-        <div class="card">
-            <h2>Test Logs & Export</h2>
-            <ul>
-                <li><a href="/admin/m1-module">Raw M1 Test Console (all endpoints)</a></li>
-                <li><a href="/admin/m1-module/export?format=csv">Export M1 Test Logs (CSV)</a></li>
-                <li><a href="/admin/m1-module/export?format=json">Export M1 Test Logs (JSON)</a></li>
-            </ul>
-        </div>
-        <?php if (!empty($profiles)): ?>
-        <div class="card">
-            <h2>Recent Verified Profiles</h2>
-            <ul>
-                <?php foreach ($profiles as $profile): ?>
-                    <li><?= esc((string) ($profile->abha_number ?? '')) ?> - <?= esc((string) ($profile->full_name ?? '')) ?> - <?= esc((string) ($profile->last_verified_at ?? '')) ?></li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-        <?php endif; ?>
+<?= $this->extend('layout/admin_layout') ?>
+<?php $title = 'M1 Suite'; ?>
+
+<?= $this->section('content') ?>
+
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-heartbeat"></i> ABDM M1 Suite</h3>
     </div>
-</body>
-</html>
+</div>
+<div class="clearfix"></div>
+
+<div class="row">
+    <!-- ABHA APIs -->
+    <div class="col-md-6">
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-id-card-o"></i> ABHA APIs</h2>
+                <div class="clearfix"></div>
+            </div>
+            <div class="x_content">
+                <ul class="list-group">
+                    <li class="list-group-item">
+                        <a href="/admin/m1/otp-flow"><i class="fa fa-plus-circle text-success"></i> <strong>ABHA Creation</strong> — OTP Guided Flow (Aadhaar)</a>
+                    </li>
+                    <li class="list-group-item">
+                        <a href="/admin/m1/verify-flow"><i class="fa fa-check-circle text-primary"></i> <strong>ABHA Verification</strong> — Verify existing ABHA holders</a>
+                    </li>
+                    <li class="list-group-item">
+                        <a href="/admin/m1/abha-validate"><i class="fa fa-search text-warning"></i> <strong>ABHA Validate</strong> — Quick lookup by ABHA ID</a>
+                    </li>
+                    <li class="list-group-item">
+                        <a href="/admin/m1/abha-profiles"><i class="fa fa-database text-info"></i> <strong>Patient Master</strong> — Saved ABHA profiles</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scan & Share -->
+    <div class="col-md-6">
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-qrcode"></i> Scan &amp; Share (HFR QR)</h2>
+                <div class="clearfix"></div>
+            </div>
+            <div class="x_content">
+                <ul class="list-group">
+                    <li class="list-group-item">
+                        <a href="/admin/m1/scan-share"><i class="fa fa-ticket text-success"></i> <strong>OPD Token Queue</strong> — Patients who scanned today's facility QR</a>
+                    </li>
+                    <li class="list-group-item">
+                        <a href="/admin/m1/scan-share-setup"><i class="fa fa-cogs text-warning"></i> <strong>Setup / Register HIP</strong> — Update bridge URL &amp; register with ABDM</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Test Logs -->
+    <div class="col-md-6">
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-flask"></i> Test Logs &amp; Export</h2>
+                <div class="clearfix"></div>
+            </div>
+            <div class="x_content">
+                <ul class="list-group">
+                    <li class="list-group-item">
+                        <a href="/admin/m1-module"><i class="fa fa-terminal"></i> <strong>Raw M1 Test Console</strong> — All endpoints</a>
+                    </li>
+                    <li class="list-group-item">
+                        <a href="/admin/m1-module/export?format=csv"><i class="fa fa-download text-success"></i> Export M1 Test Logs (CSV)</a>
+                    </li>
+                    <li class="list-group-item">
+                        <a href="/admin/m1-module/export?format=json"><i class="fa fa-download text-info"></i> Export M1 Test Logs (JSON)</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <?php if (!empty($profiles)): ?>
+    <!-- Recent Profiles -->
+    <div class="col-md-6">
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-users"></i> Recent Verified Profiles</h2>
+                <div class="clearfix"></div>
+            </div>
+            <div class="x_content">
+                <table class="table table-striped table-condensed">
+                    <thead><tr><th>ABHA Number</th><th>Name</th><th>Verified</th></tr></thead>
+                    <tbody>
+                        <?php foreach ($profiles as $p): ?>
+                        <tr>
+                            <td><code><?= esc((string) ($p->abha_number ?? '')) ?></code></td>
+                            <td><?= esc((string) ($p->full_name ?? '—')) ?></td>
+                            <td><?= esc(substr((string) ($p->last_verified_at ?? ''), 0, 10)) ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+</div>
+
+<?= $this->endSection() ?>
+
