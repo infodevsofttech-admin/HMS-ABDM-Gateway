@@ -26,6 +26,19 @@
             text-align: center;
             margin-bottom: 28px;
         }
+        .login-header .brand-logo {
+            display: block;
+            height: 42px;
+            width: auto;
+            margin: 0 auto 10px;
+        }
+        .login-header .brand-divider {
+            width: 40px;
+            height: 3px;
+            background: linear-gradient(90deg,#667eea,#764ba2);
+            border-radius: 2px;
+            margin: 0 auto 12px;
+        }
         .login-header .badge {
             display: inline-block;
             background: #eff6ff;
@@ -101,6 +114,8 @@
 <body>
     <div class="login-container">
         <div class="login-header">
+            <img src="/assets/img/e-atria-logo.png" alt="E-Atria" class="brand-logo">
+            <div class="brand-divider"></div>
             <div class="badge">Admin Panel</div>
             <h1>ABDM Bridge Gateway</h1>
             <p>Sign in with your admin credentials</p>

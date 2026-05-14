@@ -26,14 +26,27 @@
             text-align: center;
             margin-bottom: 30px;
         }
+        .login-header .brand-logo {
+            display: block;
+            height: 46px;
+            width: auto;
+            margin: 0 auto 10px;
+        }
+        .login-header .brand-divider {
+            width: 40px;
+            height: 3px;
+            background: linear-gradient(90deg,#667eea,#764ba2);
+            border-radius: 2px;
+            margin: 8px auto 10px;
+        }
         .login-header h1 {
-            font-size: 28px;
+            font-size: 20px;
             color: #1f2937;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
         }
         .login-header p {
             color: #6b7280;
-            font-size: 14px;
+            font-size: 13px;
         }
         .form-group {
             margin-bottom: 20px;
@@ -123,6 +136,8 @@
     ?>
     <div class="login-container">
         <div class="login-header">
+            <img src="/assets/img/e-atria-logo.png" alt="E-Atria" class="brand-logo">
+            <div class="brand-divider"></div>
             <h1><?= esc($title) ?></h1>
             <p><?= esc($subtitle) ?></p>
         </div>
