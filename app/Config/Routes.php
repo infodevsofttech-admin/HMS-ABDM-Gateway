@@ -24,6 +24,11 @@ $routes->post('portal/opd-queue/status','Hospital::opdQueueUpdateStatusPost',['f
 $routes->get('portal/patients',        'Hospital::patients',              ['filter' => 'auth']);
 $routes->get('portal/reports',         'Hospital::reports',               ['filter' => 'auth']);
 $routes->get('portal/profile',         'Hospital::profile',               ['filter' => 'auth']);
+$routes->get('portal/tickets',          'Hospital::tickets',               ['filter' => 'auth']);
+$routes->get('portal/tickets/new',      'Hospital::ticketNew',             ['filter' => 'auth']);
+$routes->post('portal/tickets/new',     'Hospital::ticketNewPost',         ['filter' => 'auth']);
+$routes->get('portal/tickets/(:num)',   'Hospital::ticketView/$1',         ['filter' => 'auth']);
+$routes->post('portal/tickets/(:num)/reply','Hospital::ticketReplyPost/$1',['filter' => 'auth']);
 $routes->get('portal/logout',          'Hospital::logout');
 
 // Bridge ingress endpoint for HMS queue dispatch
@@ -117,6 +122,11 @@ $routes->group('admin', ['filter' => 'auth'], static function($routes) {
     $routes->post('hms-credential/(:num)/update', 'Admin::updateHmsCredential/$1');
     $routes->post('hms-credential/(:num)/test', 'Admin::testHmsCredential/$1');
     $routes->post('hms-credential/(:num)/delete', 'Admin::deleteHmsCredential/$1');
+
+    // Support Tickets
+    $routes->get('support', 'Admin::supportTickets');
+    $routes->get('support/(:num)', 'Admin::supportTicketView/$1');
+    $routes->post('support/(:num)/reply', 'Admin::supportTicketReplyPost/$1');
 });
 
 // ==================== Catch-all ====================

@@ -86,6 +86,14 @@
                         </li>
                     </ul>
                 </div>
+                <div class="menu_section">
+                    <h3>Support</h3>
+                    <ul class="nav side-menu">
+                        <li class="<?= str_contains(current_url(), '/admin/support') ? 'current-page active' : '' ?>">
+                            <a href="/admin/support"><i class="fa fa-ticket"></i> Support Tickets</a>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>

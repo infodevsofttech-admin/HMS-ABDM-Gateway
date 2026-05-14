@@ -213,6 +213,7 @@
         <li><a href="/portal/patients" class="<?= str_contains(current_url(), 'patients') ? 'active' : '' ?>"><i class="fas fa-user-injured"></i> Patients</a></li>
         <li><a href="/portal/reports" class="<?= str_contains(current_url(), 'reports') ? 'active' : '' ?>"><i class="fas fa-chart-bar"></i> Reports</a></li>
         <li><a href="/portal/profile" class="<?= str_contains(current_url(), 'profile') ? 'active' : '' ?>"><i class="fas fa-hospital"></i> Profile</a></li>
+        <li><a href="/portal/tickets" class="<?= str_contains(current_url(), '/portal/ticket') ? 'active' : '' ?>"><i class="fas fa-ticket-alt"></i> Support</a></li>
         <?= $this->renderSection('nav_extra') ?>
     </ul>
 
@@ -243,6 +244,7 @@
     <a href="/portal/patients"><i class="fas fa-user-injured"></i> Patients</a>
     <a href="/portal/reports"><i class="fas fa-chart-bar"></i> Reports</a>
     <a href="/portal/profile"><i class="fas fa-hospital"></i> Profile</a>
+    <a href="/portal/tickets"><i class="fas fa-ticket-alt"></i> Support</a>
     <?= $this->renderSection('mobile_nav_extra') ?>
     <a href="/portal/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
 </div>

@@ -7,6 +7,8 @@ namespace App\Controllers;
 use App\Models\AbdmHospital;
 use App\Models\AbdmAbhaProfile;
 use App\Models\AbdmTokenQueue;
+use App\Models\SupportTicket;
+use App\Models\SupportMessage;
 
 class Hospital extends BaseController
 {
@@ -464,5 +466,146 @@ class Hospital extends BaseController
         } else {
             $profileModel->insert($row);
         }
+    }
+
+    // ─── Support Tickets ─────────────────────────────────────────────────────
+
+    public function tickets()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid = $this->hospitalId();
+        $ticketModel = new SupportTicket();
+
+        $status = $this->request->getGet('status') ?? '';
+        $q = $ticketModel->where('hospital_id', $hid)->orderBy('created_at', 'DESC');
+        if ($status !== '') $q->where('status', $status);
+        $tickets = $q->findAll(50);
+
+        return view('hospital/tickets', [
+            'tickets'     => $tickets,
+            'filterStatus'=> $status,
+        ]);
+    }
+
+    public function ticketNew()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+        return view('hospital/ticket_new');
+    }
+
+    public function ticketNewPost()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $subject  = trim((string) $this->request->getPost('subject'));
+        $category = trim((string) $this->request->getPost('category'));
+        $priority = trim((string) $this->request->getPost('priority'));
+        $message  = trim((string) $this->request->getPost('message'));
+
+        if ($subject === '' || $message === '') {
+            return redirect()->back()->with('error', 'Subject and message are required.');
+        }
+
+        $ticketModel  = new SupportTicket();
+        $messageModel = new SupportMessage();
+
+        $ticketNumber = $ticketModel->nextTicketNumber();
+        $now = date('Y-m-d H:i:s');
+
+        $hid     = $this->hospitalId();
+        $uid     = (int) session()->get('user_id');
+        $uname   = (string) session()->get('username');
+
+        $ticketId = $ticketModel->insert([
+            'ticket_number'      => $ticketNumber,
+            'hospital_id'        => $hid,
+            'subject'            => $subject,
+            'category'           => in_array($category, ['general','technical','billing','abha','opd','other'], true) ? $category : 'general',
+            'priority'           => in_array($priority, ['low','medium','high'], true) ? $priority : 'medium',
+            'status'             => 'open',
+            'created_by_user_id' => $uid,
+            'message_count'      => 1,
+            'last_reply_at'      => $now,
+            'last_reply_by'      => 'hospital',
+        ], true);
+
+        $messageModel->insert([
+            'ticket_id'   => $ticketId,
+            'message'     => $message,
+            'sender_type' => 'hospital',
+            'sender_id'   => $uid,
+            'sender_name' => $uname,
+            'created_at'  => $now,
+        ]);
+
+        return redirect()->to('/portal/tickets/' . $ticketId)
+            ->with('message', 'Ticket ' . $ticketNumber . ' created successfully.');
+    }
+
+    public function ticketView(int $id)
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid = $this->hospitalId();
+        $ticketModel  = new SupportTicket();
+        $messageModel = new SupportMessage();
+
+        $ticket = $ticketModel->where('id', $id)->where('hospital_id', $hid)->first();
+        if ($ticket === null) {
+            return redirect()->to('/portal/tickets')->with('error', 'Ticket not found.');
+        }
+
+        $messages = $messageModel->forTicket($id);
+
+        return view('hospital/ticket_view', [
+            'ticket'   => $ticket,
+            'messages' => $messages,
+        ]);
+    }
+
+    public function ticketReplyPost(int $id)
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid = $this->hospitalId();
+        $ticketModel  = new SupportTicket();
+        $messageModel = new SupportMessage();
+
+        $ticket = $ticketModel->where('id', $id)->where('hospital_id', $hid)->first();
+        if ($ticket === null) {
+            return redirect()->to('/portal/tickets')->with('error', 'Ticket not found.');
+        }
+
+        if (in_array((string)$ticket->status, ['resolved','closed'], true)) {
+            return redirect()->to('/portal/tickets/' . $id)->with('error', 'Cannot reply to a resolved/closed ticket.');
+        }
+
+        $message = trim((string) $this->request->getPost('message'));
+        if ($message === '') {
+            return redirect()->to('/portal/tickets/' . $id)->with('error', 'Message cannot be empty.');
+        }
+
+        $now   = date('Y-m-d H:i:s');
+        $uid   = (int) session()->get('user_id');
+        $uname = (string) session()->get('username');
+
+        $messageModel->insert([
+            'ticket_id'   => $id,
+            'message'     => $message,
+            'sender_type' => 'hospital',
+            'sender_id'   => $uid,
+            'sender_name' => $uname,
+            'created_at'  => $now,
+        ]);
+
+        $ticketModel->update($id, [
+            'message_count' => (int)$ticket->message_count + 1,
+            'last_reply_at' => $now,
+            'last_reply_by' => 'hospital',
+            'status'        => 'open',
+        ]);
+
+        return redirect()->to('/portal/tickets/' . $id)->with('message', 'Reply sent.');
     }
 }

@@ -10,6 +10,8 @@ use App\Models\AbdmRequestLog;
 use App\Models\AbdmTestSubmissionLog;
 use App\Models\AbdmTokenQueue;
 use App\Models\HmsCredential;
+use App\Models\SupportTicket;
+use App\Models\SupportMessage;
 
 class Admin extends BaseController
 {
@@ -1913,5 +1915,99 @@ class Admin extends BaseController
     {
         $parts = explode(':', base64_decode($data));
         return $parts[0] ?? '';
+    }
+
+    // ─── Support Tickets ─────────────────────────────────────────────────────
+
+    public function supportTickets()
+    {
+        $ticketModel = new SupportTicket();
+        $status   = $this->request->getGet('status') ?? '';
+        $priority = $this->request->getGet('priority') ?? '';
+
+        $q = $ticketModel->withHospital()->orderBy('t.created_at', 'DESC');
+        if ($status   !== '') $q->where('t.status', $status);
+        if ($priority !== '') $q->where('t.priority', $priority);
+        $tickets = $q->get(100)->getResultObject();
+
+        // Unread count per status
+        $counts = [
+            'open'        => $ticketModel->where('status','open')->countAllResults(false),
+            'in_progress' => $ticketModel->where('status','in_progress')->countAllResults(false),
+            'resolved'    => $ticketModel->where('status','resolved')->countAllResults(false),
+            'closed'      => $ticketModel->where('status','closed')->countAllResults(false),
+        ];
+
+        return view('admin/support_tickets', [
+            'tickets'       => $tickets,
+            'counts'        => $counts,
+            'filterStatus'  => $status,
+            'filterPriority'=> $priority,
+        ]);
+    }
+
+    public function supportTicketView(int $id)
+    {
+        $ticketModel  = new SupportTicket();
+        $messageModel = new SupportMessage();
+
+        $ticket = $ticketModel->withHospital()
+            ->where('t.id', $id)->get(1)->getRowObject();
+
+        if ($ticket === null) {
+            return redirect()->to('/admin/support')->with('error', 'Ticket not found.');
+        }
+
+        $messages = $messageModel->forTicket($id);
+
+        return view('admin/support_ticket_view', [
+            'ticket'   => $ticket,
+            'messages' => $messages,
+        ]);
+    }
+
+    public function supportTicketReplyPost(int $id)
+    {
+        $ticketModel  = new SupportTicket();
+        $messageModel = new SupportMessage();
+
+        $ticket = $ticketModel->find($id);
+        if ($ticket === null) {
+            return redirect()->to('/admin/support')->with('error', 'Ticket not found.');
+        }
+
+        $message   = trim((string) $this->request->getPost('message'));
+        $newStatus = trim((string) $this->request->getPost('status'));
+
+        if ($message === '' && $newStatus === '') {
+            return redirect()->to('/admin/support/' . $id)->with('error', 'Nothing to update.');
+        }
+
+        $now    = date('Y-m-d H:i:s');
+        $aname  = (string) session()->get('username');
+        $aid    = (int) session()->get('user_id');
+
+        if ($message !== '') {
+            $messageModel->insert([
+                'ticket_id'   => $id,
+                'message'     => $message,
+                'sender_type' => 'admin',
+                'sender_id'   => $aid,
+                'sender_name' => $aname,
+                'created_at'  => $now,
+            ]);
+        }
+
+        $update = ['last_reply_at' => $now, 'last_reply_by' => 'admin'];
+        if ($message !== '') {
+            $update['message_count'] = (int)$ticket->message_count + 1;
+        }
+        $validStatuses = ['open','in_progress','resolved','closed'];
+        if (in_array($newStatus, $validStatuses, true)) {
+            $update['status'] = $newStatus;
+        }
+        $ticketModel->update($id, $update);
+
+        return redirect()->to('/admin/support/' . $id)->with('message', 'Ticket updated.');
     }
 }
