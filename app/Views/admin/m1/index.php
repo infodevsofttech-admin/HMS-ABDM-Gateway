@@ -26,6 +26,13 @@
             </ul>
         </div>
         <div class="card">
+            <h2>Scan &amp; Share (Health Facility QR)</h2>
+            <ul>
+                <li><a href="/admin/m1/scan-share">OPD Token Queue</a> — <span style="font-size:12px;color:#6b7280;">Patients who scanned today's facility QR</span></li>
+                <li><a href="/admin/m1/scan-share-setup">Setup / Register HIP</a> — <span style="font-size:12px;color:#6b7280;">Update bridge URL &amp; register as HIP with ABDM</span></li>
+            </ul>
+        </div>
+        <div class="card">
             <h2>Test Logs & Export</h2>
             <ul>
                 <li><a href="/admin/m1-module">Raw M1 Test Console (all endpoints)</a></li>

@@ -42,6 +42,9 @@ $routes->group('api/v3', static function($routes) {
     
     // Gateway Status
     $routes->get('gateway/status', 'AbdmGateway::gatewayStatus');
+
+    // Scan and Share — ABDM calls this when patient scans facility QR
+    $routes->post('hip/patient/share', 'AbdmGateway::hipPatientShare');
 });
 
 // ==================== Authentication Routes ====================
@@ -76,6 +79,9 @@ $routes->group('admin', ['filter' => 'auth'], static function($routes) {
         $routes->post('m1/verify-user-select', 'Admin::m1VerifyUserSelectPost');
         $routes->get('m1/abha-card', 'Admin::m1AbhaCard');
         $routes->get('m1/fetch-token', 'Admin::fetchAbdmToken');
+        $routes->get('m1/scan-share', 'Admin::m1ScanShare');
+        $routes->get('m1/scan-share-setup', 'Admin::m1ScanShareSetup');
+        $routes->post('m1/scan-share-setup', 'Admin::m1ScanShareSetupPost');
     $routes->get('dashboard', 'Admin::dashboard');
     $routes->get('hospitals', 'Admin::hospitals');
     $routes->post('hospitals/create', 'Admin::createHospital');

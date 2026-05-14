@@ -7,6 +7,7 @@ use App\Models\AbdmAuditTrail;
 use App\Models\AbdmBundle;
 use App\Models\AbdmHospitalUser;
 use App\Models\AbdmTestSubmissionLog;
+use App\Models\AbdmTokenQueue;
 
 class AbdmGateway extends BaseController
 {
@@ -650,6 +651,131 @@ class AbdmGateway extends BaseController
             'ok' => $allOk ? 1 : 0,
             'data' => $status,
         ]);
+    }
+
+    /**
+     * Scan and Share callback — ABDM calls this when a patient scans the
+     * health facility QR code in their ABHA app.
+     * POST /api/v3/hip/patient/share
+     */
+    public function hipPatientShare()
+    {
+        // Accept raw JSON from ABDM (Authorization header is from ABDM gateway JWT)
+        $body = (array) ($this->request->getJSON(true) ?? []);
+
+        if (empty($body)) {
+            log_message('warning', 'hipPatientShare: empty body received');
+            return $this->response->setStatusCode(400)->setJSON(['error' => 'Empty request body']);
+        }
+
+        $incomingRequestId = (string) ($this->request->getHeaderLine('REQUEST-ID') ?: $this->generateRequestId());
+
+        $meta    = is_array($body['metaData'] ?? null) ? $body['metaData'] : [];
+        $patient = is_array($body['profile']['patient'] ?? null) ? $body['profile']['patient'] : [];
+
+        $abhaNumber  = (string) ($patient['abhaNumber']  ?? '');
+        $abhaAddress = (string) ($patient['abhaAddress'] ?? '');
+        $name        = (string) ($patient['name']        ?? '');
+        $gender      = (string) ($patient['gender']      ?? '');
+        $phone       = (string) ($patient['phoneNumber'] ?? '');
+        $hipId       = (string) ($meta['hipId']          ?? '');
+        $context     = (string) ($meta['context']        ?? '');
+        $hprId       = (string) ($meta['hprId']          ?? '');
+        $dob         = is_array($patient['address'] ?? null) ? [] : [];  // dob parsed below
+        $dayOfBirth   = (string) ($patient['dayOfBirth']   ?? '');
+        $monthOfBirth = (string) ($patient['monthOfBirth'] ?? '');
+        $yearOfBirth  = (string) ($patient['yearOfBirth']  ?? '');
+
+        try {
+            $tokenQueue  = new AbdmTokenQueue();
+            $tokenNumber = $tokenQueue->nextTokenNumber();
+            $today       = date('Y-m-d');
+
+            $tokenQueue->insert([
+                'abha_number'       => $abhaNumber,
+                'abha_address'      => $abhaAddress,
+                'patient_name'      => $name,
+                'gender'            => $gender,
+                'day_of_birth'      => $dayOfBirth,
+                'month_of_birth'    => $monthOfBirth,
+                'year_of_birth'     => $yearOfBirth,
+                'phone'             => $phone,
+                'hip_id'            => $hipId,
+                'context'           => $context,
+                'hpr_id'            => $hprId,
+                'token_number'      => $tokenNumber,
+                'token_date'        => $today,
+                'status'            => 'PENDING',
+                'request_id'        => $incomingRequestId,
+                'share_request_json' => json_encode($body),
+            ]);
+
+            // Fire on-share acknowledgement back to ABDM
+            $onShareSent = $this->sendOnShare($abhaAddress, $context, (string) $tokenNumber, $incomingRequestId);
+            if ($onShareSent) {
+                $tokenQueue->where('request_id', $incomingRequestId)->set(['on_share_sent' => 1])->update();
+            }
+
+            log_message('info', "hipPatientShare: token #{$tokenNumber} assigned to {$abhaNumber} (reqId={$incomingRequestId})");
+        } catch (\Throwable $e) {
+            log_message('error', 'hipPatientShare DB/on-share error: ' . $e->getMessage());
+            // Still return 202 so ABDM doesn't retry indefinitely
+        }
+
+        return $this->response->setStatusCode(202)->setJSON(['status' => 'ACCEPTED']);
+    }
+
+    /**
+     * Send the on-share acknowledgement back to ABDM gateway with the token number.
+     */
+    private function sendOnShare(string $abhaAddress, string $context, string $tokenNumber, string $requestId): bool
+    {
+        try {
+            $abdmToken = $this->getAbdmAccessToken();
+            $body = [
+                'acknowledgement' => [
+                    'status'  => 'SUCCESS',
+                    'abhaAddress' => $abhaAddress,
+                    'profile' => [
+                        'context'     => $context,
+                        'tokenNumber' => $tokenNumber,
+                        'expiry'      => '1800',
+                    ],
+                ],
+                'response' => [
+                    'requestId' => $requestId,
+                ],
+            ];
+
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => 'https://dev.abdm.gov.in/api/hiecm/patient-share/v3/on-share',
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 15,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => json_encode($body),
+                CURLOPT_HTTPHEADER     => [
+                    'Content-Type: application/json',
+                    'Accept: application/json',
+                    'Authorization: Bearer ' . $abdmToken,
+                    'REQUEST-ID: ' . $this->generateRequestId(),
+                    'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $raw      = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode >= 400) {
+                log_message('warning', "on-share HTTP {$httpCode}: " . substr((string) $raw, 0, 200));
+                return false;
+            }
+            return true;
+        } catch (\Throwable $e) {
+            log_message('warning', 'sendOnShare failed: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**

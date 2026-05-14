@@ -8,6 +8,7 @@ use App\Models\AbdmHospital;
 use App\Models\AbdmHospitalUser;
 use App\Models\AbdmRequestLog;
 use App\Models\AbdmTestSubmissionLog;
+use App\Models\AbdmTokenQueue;
 use App\Models\HmsCredential;
 
 class Admin extends BaseController
@@ -466,6 +467,90 @@ class Admin extends BaseController
         return view('admin/m1/profiles', [
             'profiles' => $this->abhaProfileModel->orderBy('last_verified_at', 'DESC')->findAll(200),
         ]);
+    }
+
+    public function m1ScanShare()
+    {
+        $date   = trim((string) ($this->request->getGet('date') ?: date('Y-m-d')));
+        $model  = new AbdmTokenQueue();
+        $tokens = $model->where('token_date', $date)->orderBy('token_number', 'ASC')->findAll(500);
+        return view('admin/m1/scan_share', [
+            'tokens' => $tokens,
+            'date'   => $date,
+        ]);
+    }
+
+    public function m1ScanShareSetup()
+    {
+        return view('admin/m1/scan_share_setup', [
+            'error'   => session()->getFlashdata('error'),
+            'message' => session()->getFlashdata('message'),
+            'result'  => session()->getFlashdata('result'),
+        ]);
+    }
+
+    public function m1ScanShareSetupPost()
+    {
+        $action = (string) $this->request->getPost('action');
+
+        try {
+            $abdmToken = $this->fetchAbdmTokenForAdmin();
+            $requestId = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0x0fff)|0x4000, mt_rand(0,0x3fff)|0x8000, mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff));
+            $ts        = gmdate('Y-m-d\TH:i:s.000\Z');
+
+            if ($action === 'bridge_url') {
+                $url = trim((string) $this->request->getPost('bridge_url'));
+                if ($url === '') {
+                    return redirect()->to('/admin/m1/scan-share-setup')->with('error', 'Bridge URL is required.');
+                }
+                $ch = curl_init();
+                curl_setopt_array($ch, [
+                    CURLOPT_URL            => 'https://dev.abdm.gov.in/api/hiecm/gateway/v3/bridge/url',
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 20,
+                    CURLOPT_CUSTOMREQUEST  => 'PATCH',
+                    CURLOPT_POSTFIELDS     => json_encode(['url' => $url]),
+                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Accept: application/json', 'Authorization: Bearer ' . $abdmToken, 'REQUEST-ID: ' . $requestId, 'TIMESTAMP: ' . $ts],
+                    CURLOPT_SSL_VERIFYPEER => false,
+                ]);
+                $raw  = curl_exec($ch);
+                $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                $result = ['action' => 'bridge_url', 'url' => $url, 'http_status' => $code, 'response' => substr((string) $raw, 0, 300)];
+                $msg = $code < 300 ? 'Bridge URL updated (HTTP ' . $code . ').' : 'Returned HTTP ' . $code . '. See result below.';
+                return redirect()->to('/admin/m1/scan-share-setup')->with('message', $msg)->with('result', $result);
+
+            } elseif ($action === 'register_hip') {
+                $facilityId   = trim((string) $this->request->getPost('facility_id'));
+                $facilityName = trim((string) $this->request->getPost('facility_name'));
+                $hipName      = trim((string) $this->request->getPost('hip_name'));
+                $clientId     = (string) (config('AbdmGateway')->abdmClientId ?: env('ABDM_CLIENT_ID', ''));
+                if ($facilityId === '' || $facilityName === '' || $hipName === '') {
+                    return redirect()->to('/admin/m1/scan-share-setup')->with('error', 'All HIP fields are required.');
+                }
+                $body = ['facilityId' => $facilityId, 'facilityName' => $facilityName, 'HRP' => [['bridgeId' => $clientId, 'hipName' => $hipName, 'type' => 'HIP', 'active' => true]]];
+                $ch = curl_init();
+                curl_setopt_array($ch, [
+                    CURLOPT_URL            => 'https://facilitysbx.abdm.gov.in/v1/bridges/MutipleHRPAddUpdateServices',
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 20,
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => json_encode($body),
+                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Accept: application/json', 'Authorization: Bearer ' . $abdmToken, 'REQUEST-ID: ' . $requestId, 'TIMESTAMP: ' . $ts],
+                    CURLOPT_SSL_VERIFYPEER => false,
+                ]);
+                $raw  = curl_exec($ch);
+                $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                $result = ['action' => 'register_hip', 'body' => $body, 'http_status' => $code, 'response' => substr((string) $raw, 0, 400)];
+                $msg = $code < 300 ? 'HIP registered (HTTP ' . $code . ').' : 'HIP registration returned HTTP ' . $code . '. See result.';
+                return redirect()->to('/admin/m1/scan-share-setup')->with('message', $msg)->with('result', $result);
+            }
+        } catch (\Throwable $e) {
+            return redirect()->to('/admin/m1/scan-share-setup')->with('error', 'Error: ' . $e->getMessage());
+        }
+
+        return redirect()->to('/admin/m1/scan-share-setup')->with('error', 'Unknown action.');
     }
 
     public function m1AbhaCard()
