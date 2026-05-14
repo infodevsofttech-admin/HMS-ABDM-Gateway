@@ -1376,6 +1376,17 @@ class Admin extends BaseController
                 ];
                 $abdmUrl = $baseUrl . '/abha/api/v3/enrollment/enrol/byMobile';
             }
+        } elseif (str_contains($internalPath, 'abha/validate')) {
+            // ABHA number search/validate — POST /profile/login/search
+            $abhaNumber = (string) ($payload['abha_id'] ?? $payload['abha_number'] ?? '');
+            // Normalise: strip hyphens/spaces so both 91-5101-6530-5101 and 91510165305101 are accepted
+            $abhaNumber = preg_replace('/[\s\-]/', '', $abhaNumber);
+            // Re-format as XX-XXXX-XXXX-XXXX if 14 digits
+            if (strlen($abhaNumber) === 14 && ctype_digit($abhaNumber)) {
+                $abhaNumber = substr($abhaNumber, 0, 2) . '-' . substr($abhaNumber, 2, 4) . '-' . substr($abhaNumber, 6, 4) . '-' . substr($abhaNumber, 10, 4);
+            }
+            $body    = ['ABHANumber' => $abhaNumber];
+            $abdmUrl = $baseUrl . '/abha/api/v3/profile/login/search';
         } else {
             throw new \RuntimeException('Unknown internal path for ABDM direct call: ' . $internalPath);
         }
