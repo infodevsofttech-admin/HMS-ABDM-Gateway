@@ -13,8 +13,18 @@ $routes->get('admin', 'Auth::adminLogin');
 $routes->post('admin', 'Auth::adminLogin');
 
 // Hospital portal (protected)
-$routes->get('dashboard', 'Hospital::dashboard', ['filter' => 'auth']);
-$routes->get('portal/logout', 'Hospital::logout');
+$routes->get('dashboard',              'Hospital::dashboard',            ['filter' => 'auth']);
+$routes->get('portal/abha-tools',      'Hospital::abhaTools',             ['filter' => 'auth']);
+$routes->post('portal/abha/validate',  'Hospital::abhaValidatePost',      ['filter' => 'auth']);
+$routes->post('portal/abha/otp-gen',   'Hospital::abhaOtpGeneratePost',   ['filter' => 'auth']);
+$routes->post('portal/abha/otp-verify','Hospital::abhaOtpVerifyPost',     ['filter' => 'auth']);
+$routes->get('portal/opd-queue',       'Hospital::opdQueue',              ['filter' => 'auth']);
+$routes->post('portal/opd-queue/add',  'Hospital::opdQueueCreatePost',    ['filter' => 'auth']);
+$routes->post('portal/opd-queue/status','Hospital::opdQueueUpdateStatusPost',['filter' => 'auth']);
+$routes->get('portal/patients',        'Hospital::patients',              ['filter' => 'auth']);
+$routes->get('portal/reports',         'Hospital::reports',               ['filter' => 'auth']);
+$routes->get('portal/profile',         'Hospital::profile',               ['filter' => 'auth']);
+$routes->get('portal/logout',          'Hospital::logout');
 
 // Bridge ingress endpoint for HMS queue dispatch
 $routes->post('api/v1/bridge', 'AbdmGateway::bridgeDispatch');

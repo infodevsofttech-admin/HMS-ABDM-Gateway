@@ -1,36 +1,468 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Controllers;
 
 use App\Models\AbdmHospital;
 use App\Models\AbdmAbhaProfile;
+use App\Models\AbdmTokenQueue;
 
 class Hospital extends BaseController
 {
+    // ─── Auth guard ───────────────────────────────────────────────────────────
+
+    private function guardHospital(): bool
+    {
+        return (bool) session()->get('is_logged_in') && session()->get('portal') === 'hospital';
+    }
+
+    private function hospitalId(): int
+    {
+        return (int) session()->get('hospital_id');
+    }
+
+    private function redirectUnauth()
+    {
+        return redirect()->to('/')->with('error', 'Please login to access the hospital portal.');
+    }
+
+    // ─── Dashboard ────────────────────────────────────────────────────────────
+
     public function dashboard()
     {
-        if (!session()->get('is_logged_in') || session()->get('portal') !== 'hospital') {
-            return redirect()->to('/')->with('error', 'Please login to access the hospital portal.');
-        }
+        if (!$this->guardHospital()) return $this->redirectUnauth();
 
+        $hid = $this->hospitalId();
         $hospitalModel = new AbdmHospital();
-        $hospital = $hospitalModel->find((int) session()->get('hospital_id'));
+        $hospital      = $hospitalModel->find($hid);
 
-        $profileModel = new AbdmAbhaProfile();
-        $recentProfiles = $profileModel
-            ->orderBy('last_verified_at', 'DESC')
-            ->limit(10)
-            ->findAll();
+        $profileModel  = new AbdmAbhaProfile();
+        $tokenModel    = new AbdmTokenQueue();
+
+        $totalPatients  = $profileModel->where('hospital_id', $hid)->countAllResults();
+        $todayTokens    = $tokenModel->where('hospital_id', $hid)->where('token_date', date('Y-m-d'))->countAllResults();
+        $monthTokens    = $tokenModel->where('hospital_id', $hid)
+            ->where("DATE_FORMAT(token_date,'%Y-%m')", date('Y-m'))->countAllResults();
+        $recentPatients = $profileModel->where('hospital_id', $hid)
+            ->orderBy('last_verified_at', 'DESC')->limit(5)->findAll();
 
         return view('hospital/dashboard', [
             'hospital'       => $hospital,
-            'recentProfiles' => $recentProfiles,
+            'totalPatients'  => $totalPatients,
+            'todayTokens'    => $todayTokens,
+            'monthTokens'    => $monthTokens,
+            'recentPatients' => $recentPatients,
         ]);
     }
+
+    // ─── ABHA Tools ───────────────────────────────────────────────────────────
+
+    public function abhaTools()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid          = $this->hospitalId();
+        $profileModel = new AbdmAbhaProfile();
+
+        return view('hospital/abha_tools', [
+            'message'        => session()->getFlashdata('message'),
+            'error'          => session()->getFlashdata('error'),
+            'abhaUser'       => session()->getFlashdata('abhaUser'),
+            'otpStep'        => (int)    (session()->getFlashdata('otp_step') ?: 1),
+            'txnId'          => (string) (session()->getFlashdata('otp_txn_id') ?: ''),
+            'otpType'        => (string) (session()->getFlashdata('otp_type') ?: 'aadhaar'),
+            'otpInput'       => (string) (session()->getFlashdata('otp_input') ?: ''),
+            'recentProfiles' => $profileModel->where('hospital_id', $hid)
+                                ->orderBy('last_verified_at', 'DESC')->limit(10)->findAll(),
+        ]);
+    }
+
+    public function abhaValidatePost()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $abhaId = trim((string) $this->request->getPost('abha_id'));
+        if ($abhaId === '') {
+            return redirect()->to('/portal/abha-tools')->with('error', 'ABHA number is required.');
+        }
+
+        try {
+            $response = $this->callPortalGatewayEndpoint('api/v3/abha/validate', ['abha_id' => $abhaId]);
+            $decoded  = $response['decoded'];
+            $body     = is_array($decoded['data'] ?? null) ? $decoded['data'] : $decoded;
+            $this->saveAbhaProfilePortal($body, $abhaId, (string) ($decoded['request_id'] ?? ''));
+
+            return redirect()->to('/portal/abha-tools')
+                ->with('message', 'ABHA validated successfully.')
+                ->with('abhaUser', $body);
+        } catch (\Throwable $e) {
+            return redirect()->to('/portal/abha-tools')->with('error', 'Validation failed: ' . $e->getMessage());
+        }
+    }
+
+    public function abhaOtpGeneratePost()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $otpType = $this->request->getPost('otp_type') === 'mobile' ? 'mobile' : 'aadhaar';
+        $input   = trim((string) $this->request->getPost('otp_input'));
+
+        if ($input === '') {
+            return redirect()->to('/portal/abha-tools')
+                ->with('error', 'Please enter ' . ($otpType === 'mobile' ? 'mobile number.' : 'Aadhaar number.'))
+                ->with('otp_type', $otpType)->with('otp_step', 1);
+        }
+
+        $path  = $otpType === 'mobile' ? 'api/v3/abha/mobile/generate-otp' : 'api/v3/abha/aadhaar/generate-otp';
+        $field = $otpType === 'mobile' ? 'mobile' : 'aadhaar';
+
+        try {
+            $response = $this->callPortalGatewayEndpoint($path, [$field => $input]);
+            $decoded  = $response['decoded'];
+            $txnId    = (string) ($decoded['txnId'] ?? $decoded['data']['txnId'] ?? $decoded['transaction_id'] ?? '');
+
+            return redirect()->to('/portal/abha-tools')
+                ->with('message', 'OTP sent. Enter the OTP you received.')
+                ->with('otp_step', 2)->with('otp_txn_id', $txnId)
+                ->with('otp_type', $otpType)->with('otp_input', $input);
+        } catch (\Throwable $e) {
+            return redirect()->to('/portal/abha-tools')
+                ->with('error', 'Failed to generate OTP: ' . $e->getMessage())
+                ->with('otp_type', $otpType)->with('otp_step', 1);
+        }
+    }
+
+    public function abhaOtpVerifyPost()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $otpType  = $this->request->getPost('otp_type') === 'mobile' ? 'mobile' : 'aadhaar';
+        $txnId    = trim((string) $this->request->getPost('txn_id'));
+        $otp      = trim((string) $this->request->getPost('otp'));
+        $otpInput = trim((string) $this->request->getPost('otp_input'));
+        $mobile   = trim((string) $this->request->getPost('mobile'));
+
+        if ($otp === '') {
+            return redirect()->to('/portal/abha-tools')
+                ->with('error', 'OTP is required.')
+                ->with('otp_step', 2)->with('otp_txn_id', $txnId)
+                ->with('otp_type', $otpType)->with('otp_input', $otpInput);
+        }
+
+        $path = $otpType === 'mobile' ? 'api/v3/abha/mobile/verify-otp' : 'api/v3/abha/aadhaar/verify-otp';
+
+        try {
+            $response    = $this->callPortalGatewayEndpoint($path, ['txnId' => $txnId, 'otp' => $otp, 'mobile' => $mobile]);
+            $decoded     = $response['decoded'];
+            $profileData = is_array($decoded['data'] ?? null) ? $decoded['data']
+                : (is_array($decoded['ABHAProfile'] ?? null) ? $decoded['ABHAProfile'] : $decoded);
+            $abhaNumber  = (string) ($profileData['abhaNumber'] ?? $profileData['ABHANumber'] ?? '');
+
+            if ($abhaNumber !== '' || $profileData !== []) {
+                $this->saveAbhaProfilePortal($profileData, $abhaNumber, (string) ($decoded['request_id'] ?? ''));
+            }
+
+            return redirect()->to('/portal/abha-tools')
+                ->with('message', 'ABHA created/verified successfully.')
+                ->with('abhaUser', $profileData);
+        } catch (\Throwable $e) {
+            return redirect()->to('/portal/abha-tools')
+                ->with('error', 'OTP verification failed: ' . $e->getMessage())
+                ->with('otp_step', 2)->with('otp_txn_id', $txnId)
+                ->with('otp_type', $otpType)->with('otp_input', $otpInput);
+        }
+    }
+
+    // ─── OPD Queue ────────────────────────────────────────────────────────────
+
+    public function opdQueue()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid  = $this->hospitalId();
+        $date = (string) ($this->request->getGet('date') ?: date('Y-m-d'));
+
+        $tokenModel = new AbdmTokenQueue();
+        $tokens     = $tokenModel->where('hospital_id', $hid)->where('token_date', $date)
+            ->orderBy('token_number', 'ASC')->findAll();
+
+        return view('hospital/opd_queue', [
+            'tokens'  => $tokens,
+            'date'    => $date,
+            'message' => session()->getFlashdata('message'),
+            'error'   => session()->getFlashdata('error'),
+        ]);
+    }
+
+    public function opdQueueCreatePost()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid        = $this->hospitalId();
+        $tokenModel = new AbdmTokenQueue();
+        $tokenDate  = date('Y-m-d');
+        $tokenNumber = $tokenModel->where('hospital_id', $hid)->where('token_date', $tokenDate)->nextTokenNumber();
+
+        $tokenModel->insert([
+            'hospital_id'  => $hid,
+            'patient_name' => trim((string) $this->request->getPost('patient_name')),
+            'phone'        => trim((string) $this->request->getPost('phone')),
+            'abha_number'  => trim((string) $this->request->getPost('abha_number')) ?: null,
+            'gender'       => trim((string) $this->request->getPost('gender')) ?: null,
+            'context'      => trim((string) $this->request->getPost('department')) ?: 'General OPD',
+            'token_number' => $tokenNumber,
+            'token_date'   => $tokenDate,
+            'status'       => 'PENDING',
+        ]);
+
+        return redirect()->to('/portal/opd-queue')->with('message', 'Token #' . $tokenNumber . ' created.');
+    }
+
+    public function opdQueueUpdateStatusPost()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid    = $this->hospitalId();
+        $id     = (int) $this->request->getPost('token_id');
+        $status = strtoupper(trim((string) $this->request->getPost('status')));
+
+        if (!in_array($status, ['PENDING', 'CALLED', 'COMPLETED', 'CANCELLED'], true)) {
+            return redirect()->to('/portal/opd-queue')->with('error', 'Invalid status.');
+        }
+
+        $tokenModel = new AbdmTokenQueue();
+        $token = $tokenModel->where('id', $id)->where('hospital_id', $hid)->first();
+        if ($token === null) {
+            return redirect()->to('/portal/opd-queue')->with('error', 'Token not found.');
+        }
+
+        $tokenModel->update($id, ['status' => $status]);
+        return redirect()->to('/portal/opd-queue')->with('message', 'Token status updated.');
+    }
+
+    // ─── Patients ─────────────────────────────────────────────────────────────
+
+    public function patients()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid    = $this->hospitalId();
+        $search = trim((string) ($this->request->getGet('search') ?? ''));
+
+        $profileModel = new AbdmAbhaProfile();
+        $builder      = $profileModel->where('hospital_id', $hid);
+
+        if ($search !== '') {
+            $builder = $builder->groupStart()
+                ->like('abha_number', $search)
+                ->orLike('full_name', $search)
+                ->orLike('mobile', $search)
+                ->groupEnd();
+        }
+
+        $patients = $builder->orderBy('last_verified_at', 'DESC')->findAll(100);
+
+        return view('hospital/patients', [
+            'patients' => $patients,
+            'search'   => $search,
+        ]);
+    }
+
+    // ─── Reports ──────────────────────────────────────────────────────────────
+
+    public function reports()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid          = $this->hospitalId();
+        $profileModel = new AbdmAbhaProfile();
+        $tokenModel   = new AbdmTokenQueue();
+
+        $totalProfiles = $profileModel->where('hospital_id', $hid)->countAllResults();
+        $todayProfiles = $profileModel->where('hospital_id', $hid)
+            ->where('DATE(last_verified_at)', date('Y-m-d'))->countAllResults();
+        $monthProfiles = $profileModel->where('hospital_id', $hid)
+            ->where("DATE_FORMAT(last_verified_at,'%Y-%m')", date('Y-m'))->countAllResults();
+
+        $totalTokens = $tokenModel->where('hospital_id', $hid)->countAllResults();
+        $todayTokens = $tokenModel->where('hospital_id', $hid)->where('token_date', date('Y-m-d'))->countAllResults();
+        $monthTokens = $tokenModel->where('hospital_id', $hid)
+            ->where("DATE_FORMAT(token_date,'%Y-%m')", date('Y-m'))->countAllResults();
+
+        $trend = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $day = date('Y-m-d', strtotime("-$i days"));
+            $trend[] = [
+                'date'     => $day,
+                'label'    => date('d M', strtotime($day)),
+                'profiles' => $profileModel->where('hospital_id', $hid)
+                    ->where('DATE(last_verified_at)', $day)->countAllResults(),
+                'tokens'   => $tokenModel->where('hospital_id', $hid)
+                    ->where('token_date', $day)->countAllResults(),
+            ];
+        }
+
+        return view('hospital/reports', [
+            'totalProfiles' => $totalProfiles,
+            'todayProfiles' => $todayProfiles,
+            'monthProfiles' => $monthProfiles,
+            'totalTokens'   => $totalTokens,
+            'todayTokens'   => $todayTokens,
+            'monthTokens'   => $monthTokens,
+            'trend'         => $trend,
+        ]);
+    }
+
+    // ─── Profile (read-only) ─────────────────────────────────────────────────
+
+    public function profile()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hospitalModel = new AbdmHospital();
+        $hospital      = $hospitalModel->find($this->hospitalId());
+
+        return view('hospital/profile', ['hospital' => $hospital]);
+    }
+
+    // ─── Logout ───────────────────────────────────────────────────────────────
 
     public function logout()
     {
         session()->destroy();
         return redirect()->to('/')->with('message', 'Logged out successfully.');
+    }
+
+    // ─── Private Helpers ─────────────────────────────────────────────────────
+
+    private function callPortalGatewayEndpoint(string $path, array $payload): array
+    {
+        if ((bool) config('AbdmGateway')->testMode) {
+            return $this->mockPortalResponse($path, $payload);
+        }
+
+        $token = (string) env('GATEWAY_BEARER_TOKEN', '');
+        if ($token === '') {
+            throw new \RuntimeException('Gateway bearer token not configured (GATEWAY_BEARER_TOKEN).');
+        }
+
+        $client   = \Config\Services::curlrequest(['baseURI' => base_url()]);
+        $response = $client->post($path, [
+            'headers' => [
+                'Authorization' => 'Bearer ' . $token,
+                'Content-Type'  => 'application/json',
+                'Accept'        => 'application/json',
+            ],
+            'json'    => $payload,
+            'timeout' => 30,
+        ]);
+
+        $decoded = json_decode($response->getBody(), true);
+        return [
+            'statusCode' => $response->getStatusCode(),
+            'decoded'    => is_array($decoded) ? $decoded : [],
+        ];
+    }
+
+    private function mockPortalResponse(string $path, array $payload): array
+    {
+        $requestId = 'MOCK-' . date('YmdHis') . '-' . substr(md5(uniqid('', true)), 0, 8);
+
+        if (str_contains($path, 'generate-otp')) {
+            $data = [
+                'ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'txnId' => 'TXN-MOCK-' . date('YmdHis'),
+                'data'  => ['message' => 'Mock OTP dispatched (test mode). Enter any 6-digit OTP.'],
+            ];
+        } elseif (str_contains($path, 'verify-otp')) {
+            $data = [
+                'ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'txnId' => 'TXN-MOCK-VERIFIED-' . date('YmdHis'),
+                'data'  => [
+                    'abhaNumber'  => '91-' . rand(1000, 9999) . '-' . rand(1000, 9999) . '-' . rand(1000, 9999),
+                    'name'        => 'Test Patient (Mock)',
+                    'gender'      => 'M',
+                    'yearOfBirth' => '1990',
+                    'mobile'      => $payload['mobile'] ?? '9999999999',
+                    'message'     => 'Mock OTP verified in test mode.',
+                ],
+            ];
+        } elseif (str_contains($path, 'validate')) {
+            $data = [
+                'ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'data' => [
+                    'abhaNumber'  => $payload['abha_id'] ?? '91-0000-0000-0000',
+                    'name'        => 'Test Patient (Mock)',
+                    'gender'      => 'M',
+                    'yearOfBirth' => '1990',
+                    'mobile'      => '9999999999',
+                    'message'     => 'Mock ABHA validated in test mode.',
+                ],
+            ];
+        } else {
+            $data = ['ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                     'data' => ['message' => 'Mock response (test mode)']];
+        }
+
+        return ['statusCode' => 200, 'body' => json_encode($data), 'decoded' => $data];
+    }
+
+    private function saveAbhaProfilePortal(array $payload, string $fallbackAbhaId, string $requestId): void
+    {
+        $abhaNumber = trim((string) ($payload['ABHANumber'] ?? $payload['abhaNumber'] ?? $payload['abha_id'] ?? $fallbackAbhaId));
+        if ($abhaNumber === '') return;
+
+        $firstName  = trim((string) ($payload['firstName']  ?? $payload['first_name']  ?? ''));
+        $middleName = trim((string) ($payload['middleName'] ?? $payload['middle_name'] ?? ''));
+        $lastName   = trim((string) ($payload['lastName']   ?? $payload['last_name']   ?? ''));
+        $fullName   = trim(implode(' ', array_filter([$firstName, $middleName, $lastName])));
+        if ($fullName === '') {
+            $fullName = trim((string) ($payload['name'] ?? $payload['fullName'] ?? $payload['full_name'] ?? ''));
+        }
+
+        $phrRaw  = $payload['phrAddress'] ?? $payload['abhaAddress'] ?? $payload['abha_address'] ?? null;
+        $phrAddr = is_array($phrRaw) ? ($phrRaw[0] ?? '') : (string) ($phrRaw ?? '');
+
+        $dob = trim((string) ($payload['dob'] ?? $payload['dateOfBirth'] ?? $payload['date_of_birth'] ?? ''));
+        $yob = '';
+        if (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $dob, $m)) { $yob = $m[3]; }
+        elseif (preg_match('/^(\d{4})/', $dob, $m)) { $yob = $m[1]; }
+        if ($yob === '') { $yob = trim((string) ($payload['yearOfBirth'] ?? '')); }
+
+        $row = [
+            'hospital_id'      => $this->hospitalId(),
+            'user_id'          => (int) session()->get('user_id'),
+            'abha_number'      => $abhaNumber,
+            'abha_address'     => $phrAddr,
+            'phr_address'      => $phrAddr,
+            'full_name'        => $fullName,
+            'first_name'       => $firstName,
+            'middle_name'      => $middleName,
+            'last_name'        => $lastName,
+            'gender'           => strtoupper(trim((string) ($payload['gender'] ?? ''))),
+            'mobile'           => trim((string) ($payload['mobile'] ?? $payload['mobileNumber'] ?? '')),
+            'email'            => trim((string) ($payload['email'] ?? '')) ?: null,
+            'mobile_verified'  => !empty($payload['mobileVerified']) ? 1 : 0,
+            'date_of_birth'    => $dob,
+            'year_of_birth'    => $yob,
+            'address'          => trim((string) ($payload['address'] ?? '')) ?: null,
+            'pin_code'         => trim((string) ($payload['pinCode'] ?? '')) ?: null,
+            'state_name'       => trim((string) ($payload['stateName'] ?? '')) ?: null,
+            'district_name'    => trim((string) ($payload['districtName'] ?? '')) ?: null,
+            'abha_status'      => trim((string) ($payload['abhaStatus'] ?? 'ACTIVE')),
+            'status'           => 'verified',
+            'last_request_id'  => $requestId,
+            'last_verified_at' => date('Y-m-d H:i:s'),
+            'profile_json'     => json_encode($payload),
+        ];
+
+        $profileModel = new AbdmAbhaProfile();
+        $existing = $profileModel->where('abha_number', $abhaNumber)->first();
+        if ($existing !== null) {
+            $profileModel->update((int) $existing->id, $row);
+        } else {
+            $profileModel->insert($row);
+        }
     }
 }
