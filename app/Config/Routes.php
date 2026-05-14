@@ -29,6 +29,7 @@ $routes->get('portal/tickets/new',      'Hospital::ticketNew',             ['fil
 $routes->post('portal/tickets/new',     'Hospital::ticketNewPost',         ['filter' => 'auth']);
 $routes->get('portal/tickets/(:num)',   'Hospital::ticketView/$1',         ['filter' => 'auth']);
 $routes->post('portal/tickets/(:num)/reply','Hospital::ticketReplyPost/$1',['filter' => 'auth']);
+$routes->get('portal/tickets/attachment/(:num)', 'Hospital::ticketAttachmentDownload/$1', ['filter' => 'auth']);
 $routes->get('portal/logout',          'Hospital::logout');
 
 // Bridge ingress endpoint for HMS queue dispatch
@@ -127,6 +128,7 @@ $routes->group('admin', ['filter' => 'auth'], static function($routes) {
     $routes->get('support', 'Admin::supportTickets');
     $routes->get('support/(:num)', 'Admin::supportTicketView/$1');
     $routes->post('support/(:num)/reply', 'Admin::supportTicketReplyPost/$1');
+    $routes->get('support/attachment/(:num)', 'Admin::supportAttachmentDownload/$1');
 });
 
 // ==================== Catch-all ====================

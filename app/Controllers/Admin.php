@@ -12,6 +12,7 @@ use App\Models\AbdmTokenQueue;
 use App\Models\HmsCredential;
 use App\Models\SupportTicket;
 use App\Models\SupportMessage;
+use App\Models\SupportAttachment;
 
 class Admin extends BaseController
 {
@@ -1950,6 +1951,7 @@ class Admin extends BaseController
     {
         $ticketModel  = new SupportTicket();
         $messageModel = new SupportMessage();
+        $attachModel  = new SupportAttachment();
 
         $ticket = $ticketModel->withHospital()
             ->where('t.id', $id)->get(1)->getRowObject();
@@ -1958,11 +1960,16 @@ class Admin extends BaseController
             return redirect()->to('/admin/support')->with('error', 'Ticket not found.');
         }
 
-        $messages = $messageModel->forTicket($id);
+        $messages    = $messageModel->forTicket($id);
+        $attachments = [];
+        foreach ($messages as $msg) {
+            $attachments[(int)$msg->id] = $attachModel->forMessage((int)$msg->id);
+        }
 
         return view('admin/support_ticket_view', [
-            'ticket'   => $ticket,
-            'messages' => $messages,
+            'ticket'      => $ticket,
+            'messages'    => $messages,
+            'attachments' => $attachments,
         ]);
     }
 
@@ -1970,36 +1977,46 @@ class Admin extends BaseController
     {
         $ticketModel  = new SupportTicket();
         $messageModel = new SupportMessage();
+        $attachModel  = new SupportAttachment();
 
         $ticket = $ticketModel->find($id);
         if ($ticket === null) {
             return redirect()->to('/admin/support')->with('error', 'Ticket not found.');
         }
 
-        $message   = trim((string) $this->request->getPost('message'));
+        $message   = $this->sanitizeSupportText((string) $this->request->getPost('message'));
         $newStatus = trim((string) $this->request->getPost('status'));
+        $files     = $this->request->getFiles();
+        $uploads   = $files['attachments'] ?? [];
+        if (!is_array($uploads)) $uploads = [$uploads];
+        $hasFile = false;
+        foreach ($uploads as $f) {
+            if ($f !== null && $f->isValid() && !$f->hasMoved()) { $hasFile = true; break; }
+        }
 
-        if ($message === '' && $newStatus === '') {
+        if (strip_tags($message) === '' && $newStatus === '' && !$hasFile) {
             return redirect()->to('/admin/support/' . $id)->with('error', 'Nothing to update.');
         }
 
-        $now    = date('Y-m-d H:i:s');
-        $aname  = (string) session()->get('username');
-        $aid    = (int) session()->get('user_id');
+        $now   = date('Y-m-d H:i:s');
+        $aname = (string) session()->get('username');
+        $aid   = (int) session()->get('user_id');
 
-        if ($message !== '') {
-            $messageModel->insert([
+        $msgId = null;
+        if (strip_tags($message) !== '' || $hasFile) {
+            $msgId = $messageModel->insert([
                 'ticket_id'   => $id,
                 'message'     => $message,
                 'sender_type' => 'admin',
                 'sender_id'   => $aid,
                 'sender_name' => $aname,
                 'created_at'  => $now,
-            ]);
+            ], true);
+            $this->processSupportAttachments($id, (int)$msgId, 'admin', $attachModel);
         }
 
         $update = ['last_reply_at' => $now, 'last_reply_by' => 'admin'];
-        if ($message !== '') {
+        if ($msgId !== null) {
             $update['message_count'] = (int)$ticket->message_count + 1;
         }
         $validStatuses = ['open','in_progress','resolved','closed'];
@@ -2010,4 +2027,61 @@ class Admin extends BaseController
 
         return redirect()->to('/admin/support/' . $id)->with('message', 'Ticket updated.');
     }
+
+    public function supportAttachmentDownload(int $attachId)
+    {
+        $attachModel = new SupportAttachment();
+        $attach      = $attachModel->find($attachId);
+        if ($attach === null) {
+            return redirect()->back()->with('error', 'Attachment not found.');
+        }
+        $path = SupportAttachment::storagePath($attach->stored_name);
+        if (!is_file($path)) {
+            return redirect()->back()->with('error', 'File not found on server.');
+        }
+        return $this->response
+            ->setHeader('Content-Type', $attach->mime_type ?? 'application/octet-stream')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $attach->original_name . '"')
+            ->setBody(file_get_contents($path));
+    }
+
+    private function processSupportAttachments(int $ticketId, int $msgId, string $uploaderType, SupportAttachment $attachModel): void
+    {
+        $files   = $this->request->getFiles();
+        $uploads = $files['attachments'] ?? [];
+        if (!is_array($uploads)) $uploads = [$uploads];
+
+        $allowed = ['pdf','doc','docx','xls','xlsx','jpg','jpeg','png','gif','txt','zip'];
+        $maxSize = 5 * 1024 * 1024;
+
+        foreach ($uploads as $file) {
+            if ($file === null || !$file->isValid() || $file->hasMoved()) continue;
+            if ($file->getSize() > $maxSize) continue;
+            $ext = strtolower($file->getClientExtension());
+            if (!in_array($ext, $allowed, true)) continue;
+
+            $storedName = bin2hex(random_bytes(16)) . '.' . $ext;
+            $dir = WRITEPATH . 'uploads/support/';
+            if (!is_dir($dir)) mkdir($dir, 0755, true);
+            $file->move($dir, $storedName);
+
+            $attachModel->insert([
+                'ticket_id'     => $ticketId,
+                'message_id'    => $msgId,
+                'original_name' => $file->getClientName(),
+                'stored_name'   => $storedName,
+                'mime_type'     => $file->getClientMimeType(),
+                'file_size'     => $file->getSize(),
+                'uploaded_by'   => $uploaderType,
+                'created_at'    => date('Y-m-d H:i:s'),
+            ]);
+        }
+    }
+
+    private function sanitizeSupportText(string $html): string
+    {
+        $allowed = '<p><br><b><strong><i><em><u><s><strike><ol><ul><li><h1><h2><h3><blockquote><pre><code><span><a>';
+        return strip_tags($html, $allowed);
+    }
 }
+

@@ -9,6 +9,7 @@ use App\Models\AbdmAbhaProfile;
 use App\Models\AbdmTokenQueue;
 use App\Models\SupportTicket;
 use App\Models\SupportMessage;
+use App\Models\SupportAttachment;
 
 class Hospital extends BaseController
 {
@@ -501,21 +502,21 @@ class Hospital extends BaseController
         $subject  = trim((string) $this->request->getPost('subject'));
         $category = trim((string) $this->request->getPost('category'));
         $priority = trim((string) $this->request->getPost('priority'));
-        $message  = trim((string) $this->request->getPost('message'));
+        $message  = $this->sanitizeRichText((string) $this->request->getPost('message'));
 
-        if ($subject === '' || $message === '') {
+        if ($subject === '' || strip_tags($message) === '') {
             return redirect()->back()->with('error', 'Subject and message are required.');
         }
 
         $ticketModel  = new SupportTicket();
         $messageModel = new SupportMessage();
+        $attachModel  = new SupportAttachment();
 
         $ticketNumber = $ticketModel->nextTicketNumber();
-        $now = date('Y-m-d H:i:s');
-
-        $hid     = $this->hospitalId();
-        $uid     = (int) session()->get('user_id');
-        $uname   = (string) session()->get('username');
+        $now   = date('Y-m-d H:i:s');
+        $hid   = $this->hospitalId();
+        $uid   = (int) session()->get('user_id');
+        $uname = (string) session()->get('username');
 
         $ticketId = $ticketModel->insert([
             'ticket_number'      => $ticketNumber,
@@ -530,14 +531,16 @@ class Hospital extends BaseController
             'last_reply_by'      => 'hospital',
         ], true);
 
-        $messageModel->insert([
+        $msgId = $messageModel->insert([
             'ticket_id'   => $ticketId,
             'message'     => $message,
             'sender_type' => 'hospital',
             'sender_id'   => $uid,
             'sender_name' => $uname,
             'created_at'  => $now,
-        ]);
+        ], true);
+
+        $this->handleAttachmentUploads((int)$ticketId, (int)$msgId, 'hospital', $attachModel);
 
         return redirect()->to('/portal/tickets/' . $ticketId)
             ->with('message', 'Ticket ' . $ticketNumber . ' created successfully.');
@@ -550,17 +553,23 @@ class Hospital extends BaseController
         $hid = $this->hospitalId();
         $ticketModel  = new SupportTicket();
         $messageModel = new SupportMessage();
+        $attachModel  = new SupportAttachment();
 
         $ticket = $ticketModel->where('id', $id)->where('hospital_id', $hid)->first();
         if ($ticket === null) {
             return redirect()->to('/portal/tickets')->with('error', 'Ticket not found.');
         }
 
-        $messages = $messageModel->forTicket($id);
+        $messages     = $messageModel->forTicket($id);
+        $attachments  = [];
+        foreach ($messages as $msg) {
+            $attachments[(int)$msg->id] = $attachModel->forMessage((int)$msg->id);
+        }
 
         return view('hospital/ticket_view', [
-            'ticket'   => $ticket,
-            'messages' => $messages,
+            'ticket'      => $ticket,
+            'messages'    => $messages,
+            'attachments' => $attachments,
         ]);
     }
 
@@ -571,6 +580,7 @@ class Hospital extends BaseController
         $hid = $this->hospitalId();
         $ticketModel  = new SupportTicket();
         $messageModel = new SupportMessage();
+        $attachModel  = new SupportAttachment();
 
         $ticket = $ticketModel->where('id', $id)->where('hospital_id', $hid)->first();
         if ($ticket === null) {
@@ -581,23 +591,28 @@ class Hospital extends BaseController
             return redirect()->to('/portal/tickets/' . $id)->with('error', 'Cannot reply to a resolved/closed ticket.');
         }
 
-        $message = trim((string) $this->request->getPost('message'));
-        if ($message === '') {
-            return redirect()->to('/portal/tickets/' . $id)->with('error', 'Message cannot be empty.');
+        $message = $this->sanitizeRichText((string) $this->request->getPost('message'));
+        $file    = $this->request->getFile('attachment');
+        $hasFile = $file !== null && $file->isValid() && !$file->hasMoved();
+
+        if (strip_tags($message) === '' && !$hasFile) {
+            return redirect()->to('/portal/tickets/' . $id)->with('error', 'Message or attachment required.');
         }
 
         $now   = date('Y-m-d H:i:s');
         $uid   = (int) session()->get('user_id');
         $uname = (string) session()->get('username');
 
-        $messageModel->insert([
+        $msgId = $messageModel->insert([
             'ticket_id'   => $id,
             'message'     => $message,
             'sender_type' => 'hospital',
             'sender_id'   => $uid,
             'sender_name' => $uname,
             'created_at'  => $now,
-        ]);
+        ], true);
+
+        $this->handleAttachmentUploads($id, (int)$msgId, 'hospital', $attachModel);
 
         $ticketModel->update($id, [
             'message_count' => (int)$ticket->message_count + 1,
@@ -608,4 +623,78 @@ class Hospital extends BaseController
 
         return redirect()->to('/portal/tickets/' . $id)->with('message', 'Reply sent.');
     }
+
+    public function ticketAttachmentDownload(int $attachId)
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $attachModel = new SupportAttachment();
+        $attach      = $attachModel->find($attachId);
+
+        if ($attach === null) {
+            return redirect()->back()->with('error', 'Attachment not found.');
+        }
+
+        // Ensure this hospital owns the ticket
+        $ticketModel = new SupportTicket();
+        $ticket = $ticketModel->where('id', $attach->ticket_id)
+            ->where('hospital_id', $this->hospitalId())->first();
+        if ($ticket === null) {
+            return redirect()->back()->with('error', 'Access denied.');
+        }
+
+        $path = SupportAttachment::storagePath($attach->stored_name);
+        if (!is_file($path)) {
+            return redirect()->back()->with('error', 'File not found on server.');
+        }
+
+        return $this->response
+            ->setHeader('Content-Type', $attach->mime_type ?? 'application/octet-stream')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $attach->original_name . '"')
+            ->setBody(file_get_contents($path));
+    }
+
+    // ─── Attachment upload helper ─────────────────────────────────────────────
+
+    private function handleAttachmentUploads(int $ticketId, int $msgId, string $uploaderType, SupportAttachment $attachModel): void
+    {
+        $files = $this->request->getFiles();
+        $uploads = $files['attachments'] ?? [];
+        if (!is_array($uploads)) $uploads = [$uploads];
+
+        $allowed = ['pdf','doc','docx','xls','xlsx','jpg','jpeg','png','gif','txt','zip'];
+        $maxSize = 5 * 1024 * 1024; // 5 MB
+
+        foreach ($uploads as $file) {
+            if ($file === null || !$file->isValid() || $file->hasMoved()) continue;
+            if ($file->getSize() > $maxSize) continue;
+            $ext = strtolower($file->getClientExtension());
+            if (!in_array($ext, $allowed, true)) continue;
+
+            $storedName = bin2hex(random_bytes(16)) . '.' . $ext;
+            $dir = WRITEPATH . 'uploads/support/';
+            if (!is_dir($dir)) mkdir($dir, 0755, true);
+            $file->move($dir, $storedName);
+
+            $attachModel->insert([
+                'ticket_id'     => $ticketId,
+                'message_id'    => $msgId,
+                'original_name' => $file->getClientName(),
+                'stored_name'   => $storedName,
+                'mime_type'     => $file->getClientMimeType(),
+                'file_size'     => $file->getSize(),
+                'uploaded_by'   => $uploaderType,
+                'created_at'    => date('Y-m-d H:i:s'),
+            ]);
+        }
+    }
+
+    // ─── Sanitize Quill HTML output ───────────────────────────────────────────
+
+    private function sanitizeRichText(string $html): string
+    {
+        $allowed = '<p><br><b><strong><i><em><u><s><strike><ol><ul><li><h1><h2><h3><blockquote><pre><code><span><a>';
+        return strip_tags($html, $allowed);
+    }
 }
+
