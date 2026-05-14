@@ -14,7 +14,6 @@
 <div class="clearfix"></div>
 
 <style>
-        body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; color: #111827; max-width: 700px; }
         .card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px; }
         h2 { margin-top: 0; font-size: 16px; border-bottom: 1px solid #f3f4f6; padding-bottom: 10px; }
         label { display: block; font-weight: 600; margin-top: 12px; margin-bottom: 4px; font-size: 13px; }

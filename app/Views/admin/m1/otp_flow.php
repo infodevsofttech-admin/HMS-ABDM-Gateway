@@ -10,9 +10,7 @@
 </div>
 <div class="clearfix"></div>
 
-<div class="row"><div class="col-md-8 col-md-offset-2">
 <style>
-        body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; color: #111827; max-width: 600px; }
         .card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
         .stack { display: grid; gap: 16px; }
         label { display: block; font-weight: 600; margin-bottom: 6px; margin-top: 14px; font-size: 13px; }
@@ -243,6 +241,5 @@
             document.getElementById('abha_address').value = addr;
         }
     </script>
-</div></div>
 
 <?= $this->endSection() ?>

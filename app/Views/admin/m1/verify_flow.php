@@ -10,9 +10,7 @@
 </div>
 <div class="clearfix"></div>
 
-<div class="row"><div class="col-md-8 col-md-offset-2">
 <style>
-        body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; color: #111827; max-width: 620px; }
         h1 { margin-bottom: 4px; }
         .subtitle { color: #6b7280; font-size: 14px; margin-bottom: 20px; }
         .card { background: #fff; border-radius: 10px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
@@ -291,6 +289,5 @@
     </div>
     <?php endif; ?>
 
-</div></div>
 
 <?= $this->endSection() ?>

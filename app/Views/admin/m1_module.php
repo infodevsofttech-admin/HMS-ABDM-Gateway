@@ -1,12 +1,16 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>M1 Module - ABDM Gateway</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; color: #111827; }
-        .card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+<?= $this->extend('layout/admin_layout') ?>
+<?php $title = 'M1 Module Interface'; ?>
+
+<?= $this->section('content') ?>
+
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-flask"></i> M1 Module Interface <small>Manual endpoint testing &amp; export</small></h3>
+    </div>
+</div>
+<div class="clearfix"></div>
+
+<style> background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
         .stack { display: grid; gap: 16px; }
         .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
         label { display: block; font-weight: 600; margin-bottom: 6px; }
@@ -23,13 +27,9 @@
         .pill.bad { background: #fee2e2; color: #991b1b; }
         a { color: #1d4ed8; text-decoration: none; }
         code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; }
-    </style>
-</head>
-<body>
-    <p><a href="/admin/dashboard">Back to Dashboard</a></p>
-    <h1>M1 Module Interface</h1>
+</style>
 
-    <div class="stack">
+<div class="stack">
         <?php if (!empty($message)): ?>
             <div class="ok"><?= esc((string) $message) ?></div>
         <?php endif; ?>
@@ -118,5 +118,4 @@
             </div>
         <?php endif; ?>
     </div>
-</body>
-</html>
+<?= $this->endSection() ?>
