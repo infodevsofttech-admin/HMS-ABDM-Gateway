@@ -1,78 +1,98 @@
 <?= $this->extend('layout/admin_layout') ?>
+<?php $title = 'Dashboard'; ?>
 
 <?= $this->section('content') ?>
 
-<h1>Dashboard</h1>
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-home"></i> Dashboard</h3>
+    </div>
+</div>
+<div class="clearfix"></div>
 
-<div style="display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 16px; margin-bottom: 30px;">
-    <div style="background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid #1d4ed8;">
-        <strong style="color: #6b7280; font-size: 12px;">Hospitals</strong>
-        <div style="font-size: 32px; font-weight: 700; color: #1f2937; margin-top: 8px;"><?= esc((string) $hospitalCount) ?></div>
+<div class="row tile_count">
+    <div class="col-md-2 col-sm-4 tile_stats_count">
+        <span class="count_top"><i class="fa fa-hospital-o"></i> Hospitals</span>
+        <div class="count"><?= esc((string) $hospitalCount) ?></div>
+        <span class="count_bottom"><a href="/admin/hospitals">View all</a></span>
     </div>
-    <div style="background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid #059660;">
-        <strong style="color: #6b7280; font-size: 12px;">Users</strong>
-        <div style="font-size: 32px; font-weight: 700; color: #1f2937; margin-top: 8px;"><?= esc((string) $userCount) ?></div>
+    <div class="col-md-2 col-sm-4 tile_stats_count">
+        <span class="count_top"><i class="fa fa-users"></i> Hospital Users</span>
+        <div class="count green"><?= esc((string) $userCount) ?></div>
+        <span class="count_bottom"><a href="/admin/users">View all</a></span>
     </div>
-    <div style="background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid #dc2626;">
-        <strong style="color: #6b7280; font-size: 12px;">HMS Credentials</strong>
-        <div style="font-size: 32px; font-weight: 700; color: #1f2937; margin-top: 8px;"><?= esc((string) $hmsCredentialCount) ?></div>
+    <div class="col-md-2 col-sm-4 tile_stats_count">
+        <span class="count_top"><i class="fa fa-list-alt"></i> Request Logs</span>
+        <div class="count"><?= esc((string) $requestLogCount) ?></div>
+        <span class="count_bottom"><a href="/admin/logs">View all</a></span>
     </div>
-    <div style="background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid #f59e0b;">
-        <strong style="color: #6b7280; font-size: 12px;">Request Logs</strong>
-        <div style="font-size: 32px; font-weight: 700; color: #1f2937; margin-top: 8px;"><?= esc((string) $requestLogCount) ?></div>
+    <div class="col-md-2 col-sm-4 tile_stats_count">
+        <span class="count_top"><i class="fa fa-shield"></i> Audit Logs</span>
+        <div class="count purple"><?= esc((string) $auditCount) ?></div>
+        <span class="count_bottom"><a href="/admin/audit">View all</a></span>
     </div>
-    <div style="background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid #7c3aed;">
-        <strong style="color: #6b7280; font-size: 12px;">Audit Logs</strong>
-        <div style="font-size: 32px; font-weight: 700; color: #1f2937; margin-top: 8px;"><?= esc((string) $auditCount) ?></div>
+    <div class="col-md-2 col-sm-4 tile_stats_count">
+        <span class="count_top"><i class="fa fa-flask"></i> Test Submissions</span>
+        <div class="count blue"><?= esc((string) $testLogCount) ?></div>
+        <span class="count_bottom"><a href="/admin/test-logs">View all</a></span>
     </div>
-    <div style="background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid #0ea5e9;">
-        <strong style="color: #6b7280; font-size: 12px;">Bundles</strong>
-        <div style="font-size: 32px; font-weight: 700; color: #1f2937; margin-top: 8px;"><?= esc((string) $bundleCount) ?></div>
-    </div>
-    <div style="background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid #6366f1;">
-        <strong style="color: #6b7280; font-size: 12px;">Test Submissions</strong>
-        <div style="font-size: 32px; font-weight: 700; color: #1f2937; margin-top: 8px;"><?= esc((string) $testLogCount) ?></div>
+    <div class="col-md-2 col-sm-4 tile_stats_count">
+        <span class="count_top"><i class="fa fa-heartbeat"></i> M1 Suite</span>
+        <div class="count red">&nbsp;</div>
+        <span class="count_bottom"><a href="/admin/m1">Open M1</a></span>
     </div>
 </div>
 
-<h2 style="margin-bottom: 16px; color: #1f2937;">Recent Hospitals</h2>
-<div style="background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);">
-    <table style="width: 100%; border-collapse: collapse;">
-        <thead>
-            <tr style="background: #f3f4f6;">
-                <th style="border: 1px solid #e5e7eb; padding: 12px; text-align: left; font-weight: 600; color: #374151;">ID</th>
-                <th style="border: 1px solid #e5e7eb; padding: 12px; text-align: left; font-weight: 600; color: #374151;">Hospital</th>
-                <th style="border: 1px solid #e5e7eb; padding: 12px; text-align: left; font-weight: 600; color: #374151;">HFR ID</th>
-                <th style="border: 1px solid #e5e7eb; padding: 12px; text-align: left; font-weight: 600; color: #374151;">Mode</th>
-                <th style="border: 1px solid #e5e7eb; padding: 12px; text-align: left; font-weight: 600; color: #374151;">Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php if (empty($hospitals)): ?>
-                <tr>
-                    <td colspan="5" style="border: 1px solid #e5e7eb; padding: 12px; text-align: center; color: #6b7280;">No hospitals yet</td>
-                </tr>
-            <?php else: ?>
-                <?php foreach ($hospitals as $hospital): ?>
-                    <tr style="border-bottom: 1px solid #e5e7eb;">
-                        <td style="border: 1px solid #e5e7eb; padding: 12px;"><?= esc((string) $hospital->id) ?></td>
-                        <td style="border: 1px solid #e5e7eb; padding: 12px;"><?= esc((string) $hospital->hospital_name) ?></td>
-                        <td style="border: 1px solid #e5e7eb; padding: 12px;"><?= esc((string) $hospital->hfr_id) ?></td>
-                        <td style="border: 1px solid #e5e7eb; padding: 12px;">
-                            <span style="display: inline-block; padding: 4px 12px; background: <?= $hospital->gateway_mode === 'live' ? '#fee2e2' : '#dbeafe' ?>; color: <?= $hospital->gateway_mode === 'live' ? '#991b1b' : '#1d4ed8' ?>; border-radius: 4px; font-size: 12px; font-weight: 600;">
-                                <?= strtoupper($hospital->gateway_mode) ?>
-                            </span>
-                        </td>
-                        <td style="border: 1px solid #e5e7eb; padding: 12px;">
-                            <span style="color: <?= $hospital->is_active ? '#059660' : '#991b1b' ?>;">
-                                <?= $hospital->is_active ? 'Active' : 'Inactive' ?>
-                            </span>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </tbody>
-    </table>
+<div class="row">
+    <div class="col-md-12">
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-hospital-o"></i> Registered Hospitals</h2>
+                <ul class="nav navbar-right panel_toolbox">
+                    <li><a href="/admin/hospitals" class="btn btn-xs btn-primary">View All</a></li>
+                </ul>
+                <div class="clearfix"></div>
+            </div>
+            <div class="x_content">
+                <table class="table table-striped table-bordered">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Hospital Name</th>
+                            <th>HFR ID</th>
+                            <th>Mode</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($hospitals)): ?>
+                            <tr><td colspan="5" class="text-center text-muted">No hospitals registered yet.</td></tr>
+                        <?php else: ?>
+                            <?php foreach ($hospitals as $h): ?>
+                            <tr>
+                                <td><?= esc((string) $h->id) ?></td>
+                                <td><strong><?= esc((string) $h->hospital_name) ?></strong></td>
+                                <td><code><?= esc((string) $h->hfr_id) ?></code></td>
+                                <td>
+                                    <span class="label <?= $h->gateway_mode === 'live' ? 'label-danger' : 'label-primary' ?>">
+                                        <?= strtoupper((string) $h->gateway_mode) ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <?php if ($h->is_active): ?>
+                                        <span class="label label-success">Active</span>
+                                    <?php else: ?>
+                                        <span class="label label-default">Inactive</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
 <?= $this->endSection() ?>
