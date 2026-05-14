@@ -161,6 +161,7 @@
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
 <!-- Gentelella JS -->
 <script src="https://cdn.jsdelivr.net/npm/gentelella@1.4.0/build/js/custom.min.js"></script>
+<?= $this->renderSection('scripts') ?>
 </body>
 </html>
 
