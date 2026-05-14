@@ -28,8 +28,9 @@
         }
         .login-header .brand-logo {
             display: block;
-            height: 46px;
-            width: auto;
+            max-width: 160px;
+            width: 100%;
+            height: auto;
             margin: 0 auto 10px;
         }
         .login-header .brand-divider {

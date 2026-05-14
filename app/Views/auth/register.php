@@ -12,7 +12,7 @@
         .card{background:#fff;padding:40px;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);
               width:100%;max-width:680px;margin:auto}
         h1{font-size:22px;color:#1f2937;margin-bottom:4px;text-align:center}
-        .brand-logo{display:block;height:44px;width:auto;margin:0 auto 8px}
+        .brand-logo{display:block;max-width:160px;width:100%;height:auto;margin:0 auto 8px}
         .brand-divider{width:40px;height:3px;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:2px;margin:6px auto 10px}
         .sub{color:#6b7280;font-size:14px;text-align:center;margin-bottom:28px}
         .section-title{font-size:12px;font-weight:700;color:#764ba2;text-transform:uppercase;
