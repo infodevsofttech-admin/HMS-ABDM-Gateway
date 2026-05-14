@@ -956,7 +956,7 @@ class Admin extends BaseController
             CURLOPT_HTTPHEADER     => [
                 'Content-Type: application/json',
                 'Accept: application/json',
-                'REQUEST-ID: ' . bin2hex(random_bytes(16)),
+                'REQUEST-ID: ' . sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0x0fff)|0x4000, mt_rand(0,0x3fff)|0x8000, mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff)),
                 'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
                 'X-CM-ID: sbx',
             ],
@@ -991,6 +991,15 @@ class Admin extends BaseController
      */
     private function fetchAbdmPublicKey(string $abdmToken): string
     {
+        // Highest priority: key stored in .env (updated monthly by admin)
+        $envKey = (string) env('ABDM_PUBLIC_KEY', '');
+        if ($envKey !== '') {
+            if (strpos($envKey, '-----BEGIN') === false) {
+                $envKey = "-----BEGIN PUBLIC KEY-----\n" . chunk_split(trim($envKey), 64, "\n") . "-----END PUBLIC KEY-----\n";
+            }
+            return $envKey;
+        }
+
         $cache  = service('cache');
         $cached = $cache->get('abdm_public_key_v3');
         if (is_string($cached) && $cached !== '') {
@@ -1005,7 +1014,7 @@ class Admin extends BaseController
             CURLOPT_HTTPHEADER     => [
                 'Accept: application/json',
                 'Authorization: Bearer ' . $abdmToken,
-                'REQUEST-ID: ' . bin2hex(random_bytes(16)),
+                'REQUEST-ID: ' . sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0x0fff)|0x4000, mt_rand(0,0x3fff)|0x8000, mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff)),
                 'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
             ],
             CURLOPT_SSL_VERIFYPEER => false,
