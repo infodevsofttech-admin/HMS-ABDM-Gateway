@@ -180,6 +180,9 @@
             <?php if (!$isAdminPortal): ?>
                 <div class="register-link">
                     Don't have an account? <a href="/auth/register">Register here</a>
+                    <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
+                        <a href="/api-docs" style="color:#6c757d;font-size:13px;font-weight:400;">View API Documentation</a>
+                    </div>
                 </div>
             <?php endif; ?>
         </form>

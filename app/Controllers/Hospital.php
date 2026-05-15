@@ -320,6 +320,13 @@ class Hospital extends BaseController
 
     // ─── API Documentation ───────────────────────────────────────────────────
 
+    public function apiDocsPublic()
+    {
+        return view('hospital/api_docs_public', [
+            'base_url' => 'https://abdm-bridge.e-atria.in',
+        ]);
+    }
+
     public function apiDocs()
     {
         if (!$this->guardHospital()) return $this->redirectUnauth();

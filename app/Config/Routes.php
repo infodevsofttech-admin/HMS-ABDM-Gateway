@@ -12,6 +12,9 @@ $routes->post('/', 'Auth::hospitalLogin');
 $routes->get('admin', 'Auth::adminLogin');
 $routes->post('admin', 'Auth::adminLogin');
 
+// Public API documentation (no auth required)
+$routes->get('api-docs', 'Hospital::apiDocsPublic');
+
 // Hospital portal (protected)
 $routes->get('dashboard',              'Hospital::dashboard',            ['filter' => 'auth']);
 $routes->get('portal/abha-tools',      'Hospital::abhaTools',             ['filter' => 'auth']);
