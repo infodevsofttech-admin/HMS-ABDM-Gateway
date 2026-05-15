@@ -147,8 +147,18 @@ $recentProfiles= $recentProfiles ?? [];
                             <button type="submit" class="btn btn-success btn-block">
                                 <i class="fas fa-check mr-1"></i> Verify OTP &amp; Create ABHA
                             </button>
-                            <a href="/portal/abha-tools" class="btn btn-link btn-block btn-sm mt-1">Start over</a>
                         </form>
+                        <div class="d-flex justify-content-between align-items-center mt-2">
+                            <form method="POST" action="/portal/abha/otp-gen">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="otp_type" value="aadhaar">
+                                <input type="hidden" name="otp_input" value="<?= esc($otpInput) ?>">
+                                <button type="submit" class="btn btn-outline-secondary btn-sm" id="resend-aadhaar-btn" disabled>
+                                    <i class="fas fa-redo mr-1"></i> Resend OTP (<span id="resend-aadhaar-timer">30</span>s)
+                                </button>
+                            </form>
+                            <a href="/portal/abha-tools" class="btn btn-link btn-sm">Start over</a>
+                        </div>
                         <?php endif; ?>
 
                     </div>
@@ -206,8 +216,18 @@ $recentProfiles= $recentProfiles ?? [];
                             <input type="text" name="otp" class="form-control" placeholder="6-digit OTP" maxlength="6" required autofocus>
                         </div>
                         <button type="submit" class="btn btn-success btn-block"><i class="fas fa-check mr-1"></i> Verify OTP</button>
-                        <a href="/portal/abha-tools" class="btn btn-link btn-block btn-sm mt-1">Start over</a>
                     </form>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <form method="POST" action="/portal/abha/otp-gen">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="otp_type" value="mobile">
+                            <input type="hidden" name="otp_input" value="<?= esc($otpInput) ?>">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm" id="resend-mobile-btn" disabled>
+                                <i class="fas fa-redo mr-1"></i> Resend OTP (<span id="resend-mobile-timer">30</span>s)
+                            </button>
+                        </form>
+                        <a href="/portal/abha-tools" class="btn btn-link btn-sm">Start over</a>
+                    </div>
                     <?php endif; ?>
                 </div>
             </div>
@@ -248,6 +268,30 @@ $recentProfiles= $recentProfiles ?? [];
 $('#tab-mobile').tab('show');
 <?php elseif ($otpStep > 1 && $otpType === 'aadhaar'): ?>
 $('#tab-create').tab('show');
+<?php endif; ?>
+
+// Resend OTP countdown (30 seconds)
+function startResendCountdown(btnId, timerId) {
+    var btn = document.getElementById(btnId);
+    var timerEl = document.getElementById(timerId);
+    if (!btn || !timerEl) return;
+    var seconds = 30;
+    btn.disabled = true;
+    var interval = setInterval(function() {
+        seconds--;
+        timerEl.textContent = seconds;
+        if (seconds <= 0) {
+            clearInterval(interval);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-redo mr-1"></i> Resend OTP';
+        }
+    }, 1000);
+}
+<?php if ($otpStep >= 2 && $otpType === 'aadhaar'): ?>
+startResendCountdown('resend-aadhaar-btn', 'resend-aadhaar-timer');
+<?php endif; ?>
+<?php if ($otpStep >= 2 && $otpType === 'mobile'): ?>
+startResendCountdown('resend-mobile-btn', 'resend-mobile-timer');
 <?php endif; ?>
 </script>
 <?= $this->endSection() ?>
