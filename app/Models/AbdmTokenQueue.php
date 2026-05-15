@@ -16,7 +16,7 @@ class AbdmTokenQueue extends Model
     protected $allowedFields = [
         'hospital_id', 'abha_number', 'abha_address', 'patient_name',
         'gender', 'day_of_birth', 'month_of_birth', 'year_of_birth',
-        'phone', 'hip_id', 'context', 'hpr_id',
+        'phone', 'hip_id', 'context', 'department_code', 'hpr_id',
         'token_number', 'token_date', 'status',
         'request_id', 'on_share_sent', 'share_request_json',
     ];

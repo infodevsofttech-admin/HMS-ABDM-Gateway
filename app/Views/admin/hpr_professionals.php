@@ -87,9 +87,11 @@
                             </div>
                         </div>
                         <div class="col-md-4">
-                            <div class="form-group">
-                                <label>Specialization</label>
-                                <input type="text" name="specialization" class="form-control" placeholder="General Medicine">
+                            <div class="form-group" style="position:relative;">
+                                <label>Specialization <small class="text-muted" style="font-size:11px;">(SNOMED CT)</small></label>
+                                <input type="text" id="snomed-spec-admin" name="specialization" class="form-control" placeholder="Type to search…" autocomplete="off">
+                                <input type="hidden" name="specialization_code" id="snomed-spec-admin-code">
+                                <div id="snomed-spec-admin-drop" class="list-group" style="display:none;position:absolute;z-index:1000;width:100%;max-height:220px;overflow-y:auto;box-shadow:0 4px 8px rgba(0,0,0,.18);border:1px solid #ddd;border-radius:4px;background:#fff;"></div>
                             </div>
                         </div>
                         <div class="col-md-4">
@@ -157,7 +159,12 @@
                                         </a>
                                     </td>
                                     <td><?= esc((string) ($p['designation'] ?? '—')) ?></td>
-                                    <td><?= esc((string) ($p['specialization'] ?? '—')) ?></td>
+                                    <td>
+                                        <?= esc((string) ($p['specialization'] ?? '—')) ?>
+                                        <?php if (!empty($p['specialization_code'])): ?>
+                                            <br><small class="text-muted"><?= esc((string) $p['specialization_code']) ?></small>
+                                        <?php endif; ?>
+                                    </td>
                                     <td><?= esc((string) ($p['department'] ?? '—')) ?></td>
                                     <td><?= esc((string) ($p['registration_number'] ?? '—')) ?></td>
                                     <td>
@@ -201,4 +208,53 @@
 </div>
 <?php endif; ?>
 
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script>
+(function () {
+    var inp  = document.getElementById('snomed-spec-admin');
+    var code = document.getElementById('snomed-spec-admin-code');
+    var drop = document.getElementById('snomed-spec-admin-drop');
+    if (!inp) return;
+    var timer;
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    inp.addEventListener('input', function () {
+        var term = inp.value.trim();
+        code.value = '';
+        clearTimeout(timer);
+        if (term.length < 2) { drop.style.display = 'none'; return; }
+        timer = setTimeout(function () {
+            fetch('https://csnotk.e-atria.in/api/search/search?term=' + encodeURIComponent(term) +
+                '&state=active&semantictag=qualifier+value&acceptability=preferred&returnlimit=15&groupbyconcept=true')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                drop.innerHTML = '';
+                if (!Array.isArray(data) || !data.length) { drop.style.display = 'none'; return; }
+                data.forEach(function (item) {
+                    var a = document.createElement('a');
+                    a.href = '#';
+                    a.className = 'list-group-item list-group-item-action';
+                    a.style.cssText = 'font-size:12px;padding:8px 12px;cursor:pointer;';
+                    a.innerHTML = escHtml(item.term) + ' <span style="color:#95a5a6;font-size:11px;">[' + escHtml(item.conceptId) + ']</span>';
+                    a.addEventListener('mousedown', function (e) {
+                        e.preventDefault();
+                        inp.value  = item.term;
+                        code.value = item.conceptId;
+                        drop.style.display = 'none';
+                    });
+                    drop.appendChild(a);
+                });
+                drop.style.display = 'block';
+            })
+            .catch(function () { drop.style.display = 'none'; });
+        }, 350);
+    });
+    document.addEventListener('click', function (e) {
+        if (!drop.contains(e.target) && e.target !== inp) drop.style.display = 'none';
+    });
+}());
+</script>
 <?= $this->endSection() ?>

@@ -1406,16 +1406,19 @@ class AbdmGateway extends BaseController
         $tokenNumber = $tokenModel->where('hospital_id', $hospitalId)
             ->where('token_date', $tokenDate)->countAllResults() + 1;
 
+        $departmentCode = trim((string) ($body['department_code'] ?? '')) ?: null;
+
         $id = $tokenModel->insert([
-            'hospital_id'  => $hospitalId,
-            'patient_name' => $patientName,
-            'phone'        => trim((string) ($body['phone']       ?? '')),
-            'abha_number'  => trim((string) ($body['abha_number'] ?? '')) ?: null,
-            'gender'       => trim((string) ($body['gender']      ?? '')) ?: null,
-            'context'      => trim((string) ($body['department']  ?? '')) ?: 'General OPD',
-            'token_number' => $tokenNumber,
-            'token_date'   => $tokenDate,
-            'status'       => 'PENDING',
+            'hospital_id'     => $hospitalId,
+            'patient_name'    => $patientName,
+            'phone'           => trim((string) ($body['phone']       ?? '')),
+            'abha_number'     => trim((string) ($body['abha_number'] ?? '')) ?: null,
+            'gender'          => trim((string) ($body['gender']      ?? '')) ?: null,
+            'context'         => trim((string) ($body['department']  ?? '')) ?: 'General OPD',
+            'department_code' => $departmentCode,
+            'token_number'    => $tokenNumber,
+            'token_date'      => $tokenDate,
+            'status'          => 'PENDING',
         ]);
 
         $token = $tokenModel->find($id);

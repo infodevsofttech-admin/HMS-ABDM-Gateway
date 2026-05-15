@@ -58,9 +58,11 @@ $hospital = $hospital ?? null;
                     <label class="hp-label">Designation</label>
                     <input type="text" name="designation" class="hp-input" placeholder="Senior Physician">
                 </div>
-                <div>
-                    <label class="hp-label">Specialization</label>
-                    <input type="text" name="specialization" class="hp-input" placeholder="General Medicine">
+                <div style="position:relative;">
+                    <label class="hp-label">Specialization <span style="color:#6b7280;font-size:11px;">(SNOMED CT)</span></label>
+                    <input type="text" id="snomed-spec-portal" name="specialization" class="hp-input" placeholder="Type to search…" autocomplete="off">
+                    <input type="hidden" name="specialization_code" id="snomed-spec-portal-code">
+                    <div id="snomed-spec-portal-drop" style="display:none;position:absolute;z-index:1000;width:100%;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #d1d5db;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.12);"></div>
                 </div>
                 <div>
                     <label class="hp-label">Department</label>
@@ -118,7 +120,12 @@ $hospital = $hospital ?? null;
                                     <code style="font-size:13px;"><?= esc((string) $p['hpr_id']) ?></code>
                                 </td>
                                 <td style="padding:12px 16px;color:#6b7280;"><?= esc((string) ($p['designation'] ?? '—')) ?></td>
-                                <td style="padding:12px 16px;color:#6b7280;"><?= esc((string) ($p['specialization'] ?? '—')) ?></td>
+                                <td style="padding:12px 16px;color:#6b7280;">
+                                    <?= esc((string) ($p['specialization'] ?? '—')) ?>
+                                    <?php if (!empty($p['specialization_code'])): ?>
+                                        <br><small style="color:#9ca3af;font-size:11px;"><?= esc((string) $p['specialization_code']) ?></small>
+                                    <?php endif; ?>
+                                </td>
                                 <td style="padding:12px 16px;color:#6b7280;"><?= esc((string) ($p['department'] ?? '—')) ?></td>
                                 <td style="padding:12px 16px;">
                                     <?php if ($p['is_active']): ?>
@@ -145,4 +152,54 @@ $hospital = $hospital ?? null;
     </div>
 </div>
 
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script>
+(function () {
+    var inp  = document.getElementById('snomed-spec-portal');
+    var code = document.getElementById('snomed-spec-portal-code');
+    var drop = document.getElementById('snomed-spec-portal-drop');
+    if (!inp) return;
+    var timer;
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    inp.addEventListener('input', function () {
+        var term = inp.value.trim();
+        code.value = '';
+        clearTimeout(timer);
+        if (term.length < 2) { drop.style.display = 'none'; return; }
+        timer = setTimeout(function () {
+            fetch('https://csnotk.e-atria.in/api/search/search?term=' + encodeURIComponent(term) +
+                '&state=active&semantictag=qualifier+value&acceptability=preferred&returnlimit=15&groupbyconcept=true')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                drop.innerHTML = '';
+                if (!Array.isArray(data) || !data.length) { drop.style.display = 'none'; return; }
+                data.forEach(function (item) {
+                    var a = document.createElement('a');
+                    a.href = '#';
+                    a.style.cssText = 'display:block;padding:10px 14px;font-size:13px;color:#374151;text-decoration:none;border-bottom:1px solid #f3f4f6;cursor:pointer;';
+                    a.innerHTML = escHtml(item.term) + '<span style="color:#9ca3af;font-size:11px;margin-left:6px;">[' + escHtml(item.conceptId) + ']</span>';
+                    a.addEventListener('mouseover', function () { this.style.background = '#f0f9ff'; });
+                    a.addEventListener('mouseout',  function () { this.style.background = ''; });
+                    a.addEventListener('mousedown', function (e) {
+                        e.preventDefault();
+                        inp.value  = item.term;
+                        code.value = item.conceptId;
+                        drop.style.display = 'none';
+                    });
+                    drop.appendChild(a);
+                });
+                drop.style.display = 'block';
+            })
+            .catch(function () { drop.style.display = 'none'; });
+        }, 350);
+    });
+    document.addEventListener('click', function (e) {
+        if (!drop.contains(e.target) && e.target !== inp) drop.style.display = 'none';
+    });
+}());
+</script>
 <?= $this->endSection() ?>

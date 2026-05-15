@@ -912,6 +912,7 @@ class Hospital extends BaseController
         $hprId              = trim((string) $this->request->getPost('hpr_id'));
         $designation        = trim((string) $this->request->getPost('designation'));
         $specialization     = trim((string) $this->request->getPost('specialization'));
+        $specializationCode = trim((string) $this->request->getPost('specialization_code'));
         $department         = trim((string) $this->request->getPost('department'));
         $registrationNumber = trim((string) $this->request->getPost('registration_number'));
         $back = '/portal/hpr-professionals';
@@ -938,6 +939,7 @@ class Hospital extends BaseController
             'hpr_id'              => $hprId,
             'designation'         => $designation ?: null,
             'specialization'      => $specialization ?: null,
+            'specialization_code' => $specializationCode ?: null,
             'department'          => $department ?: null,
             'registration_number' => $registrationNumber ?: null,
             'is_active'           => 1,

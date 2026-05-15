@@ -18,6 +18,7 @@ class HospitalHprProfessional extends Model
         'hpr_id',
         'registration_number',
         'specialization',
+        'specialization_code',
         'department',
         'designation',
         'is_active',

@@ -131,6 +131,7 @@ curl -X GET "https://abdm-bridge.e-atria.in/api/v3/opd/queue?date=2026-05-16&sta
 | `dob` | string \| null | Date of birth `YYYY-MM-DD` |
 | `phone` | string \| null | Mobile number |
 | `department` | string \| null | Clinical context / department |
+| `department_code` | string \| null | SNOMED CT concept ID for the department (from CSNOtk) |
 | `status` | string | `PENDING`, `CALLED`, `COMPLETED`, `CANCELLED` |
 | `source` | string | `scan_share` (from ABHA QR) or `manual` (walk-in) |
 | `created_at` | string | ISO datetime when token was created |
@@ -156,6 +157,7 @@ POST /api/v3/opd/token
 | `abha_number` | string | No | If the patient knows their ABHA number |
 | `gender` | string | No | `M`, `F`, or `O` |
 | `department` | string | No | Department or clinical context (default: `General OPD`) |
+| `department_code` | string | No | SNOMED CT concept ID for the department (e.g. `773568002` for Emergency medicine) |
 | `date` | string | No | Token date `YYYY-MM-DD` (default: today) |
 
 **Example Request**
@@ -167,7 +169,8 @@ curl -X POST "https://abdm-bridge.e-atria.in/api/v3/opd/token" \
     "patient_name": "Sanjay Mehra",
     "phone": "9812345678",
     "gender": "M",
-    "department": "Cardiology"
+    "department": "Cardiology",
+    "department_code": "394579002"
   }'
 ```
 
