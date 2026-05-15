@@ -20,6 +20,7 @@ class AbdmRequestLog extends Model
         'ip_address',
         'authorization_status',
         'error_message',
+        'response_body',
         'created_at',
     ];
 

@@ -289,14 +289,16 @@ class AbdmGateway extends BaseController
         }
 
         $body   = json_decode((string) $this->request->getBody(), true) ?? [];
-        $txnId  = trim((string) ($body['txnId']  ?? ''));
-        $otp    = trim((string) ($body['otp']    ?? ''));
-        $mobile = trim((string) ($body['mobile'] ?? ''));
+        // Accept both 'otp' and 'otpValue' (ABDM-style) for HMS compatibility
+        $txnId  = trim((string) ($body['txnId']  ?? $body['transactionId'] ?? $body['transaction_id'] ?? ''));
+        $otp    = trim((string) ($body['otp']    ?? $body['otpValue']      ?? $body['otp_value']      ?? ''));
+        $mobile = trim((string) ($body['mobile'] ?? $body['mobileNumber']  ?? $body['mobile_number']  ?? ''));
 
         if ($txnId === '' || $otp === '') {
+            $this->logRequest($requestId, 'POST', $ep, 400, 'valid', 'missing_fields: txnId or otp empty');
             return $this->response->setStatusCode(400)->setJSON([
                 'ok' => 0, 'error' => 'missing_fields',
-                'message' => 'Fields "txnId" and "otp" are required.',
+                'message' => 'Required fields: txnId (or transactionId) and otp (or otpValue).',
                 'request_id' => $requestId,
             ]);
         }
@@ -1064,7 +1066,7 @@ class AbdmGateway extends BaseController
     /**
      * Log Request
      */
-    protected function logRequest($requestId, $method, $endpoint, $statusCode, $authStatus, $errorMessage = null, $responseTime = 0)
+    protected function logRequest($requestId, $method, $endpoint, $statusCode, $authStatus, $errorMessage = null, $responseTime = 0, $responseBody = null)
     {
         if ($this->isTestMode() || $this->requestLog === null) {
             return;
@@ -1072,15 +1074,16 @@ class AbdmGateway extends BaseController
 
         try {
             $this->requestLog->insert([
-                'request_id' => $requestId,
-                'method' => $method,
-                'endpoint' => $endpoint,
-                'status_code' => $statusCode,
-                'response_time_ms' => $responseTime,
-                'ip_address' => $this->request->getIPAddress(),
+                'request_id'           => $requestId,
+                'method'               => $method,
+                'endpoint'             => $endpoint,
+                'status_code'          => $statusCode,
+                'response_time_ms'     => $responseTime,
+                'ip_address'           => $this->request->getIPAddress(),
                 'authorization_status' => $authStatus,
-                'error_message' => $errorMessage,
-                'created_at' => date('Y-m-d H:i:s'),
+                'error_message'        => $errorMessage,
+                'response_body'        => $responseBody !== null ? substr((string) $responseBody, 0, 2000) : null,
+                'created_at'           => date('Y-m-d H:i:s'),
             ]);
         } catch (\Throwable $e) {
             // Silently fail - don't break the API
@@ -1433,7 +1436,7 @@ class AbdmGateway extends BaseController
             }
 
             $responseTime = round((microtime(true) - $startTime) * 1000);
-            $this->logRequest($requestId, 'POST', $gatewayEndpoint, $httpCode, 'valid', null, $responseTime);
+            $this->logRequest($requestId, 'POST', $gatewayEndpoint, $httpCode, 'valid', null, $responseTime, $rawResponse);
 
             $decoded = json_decode((string) $rawResponse, true);
             $payload = is_array($decoded) ? $decoded : ['raw_response' => trim((string) $rawResponse)];
@@ -1556,7 +1559,7 @@ class AbdmGateway extends BaseController
             }
 
             $responseTime = round((microtime(true) - $startTime) * 1000);
-            $this->logRequest($requestId, 'POST', $gatewayEndpoint, $httpCode, 'valid', null, $responseTime);
+            $this->logRequest($requestId, 'POST', $gatewayEndpoint, $httpCode, 'valid', null, $responseTime, $rawResponse);
 
             $decoded = json_decode((string) $rawResponse, true);
             $payload = is_array($decoded)
