@@ -289,11 +289,9 @@ curl <?= esc($baseUrl) ?>/api/v3/health<br><br>
                 <div class="hp-card-body">
                     <p style="font-size:13px;color:#6c757d;">M1 — Trigger an OTP to the patient's Aadhaar-linked mobile to begin ABHA creation/linking.</p>
                     <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
-<span style="color:#6a9955;">// Request body</span><br>
+<span style="color:#6a9955;">// Request body &mdash; send plain 12-digit Aadhaar; gateway encrypts it</span><br>
 {<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"loginHint"</span>: <span style="color:#ce9178;">"aadhaar"</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"loginId"</span>: <span style="color:#ce9178;">"999941057058"</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"otpSystem"</span>: <span style="color:#ce9178;">"aadhaar"</span><br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"aadhaar"</span>: <span style="color:#ce9178;">"999941057058"</span><br>
 }<br><br>
 <span style="color:#6a9955;">// Response</span><br>
 { <span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>, <span style="color:#9cdcfe;">"data"</span>: { <span style="color:#9cdcfe;">"txnId"</span>: <span style="color:#ce9178;">"..."</span> } }
@@ -307,12 +305,14 @@ curl <?= esc($baseUrl) ?>/api/v3/health<br><br>
                 <div class="hp-card-body">
                     <p style="font-size:13px;color:#6c757d;">M1 — Submit the Aadhaar OTP and complete ABHA enrolment. Returns ABHA profile on success.</p>
                     <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
-<span style="color:#6a9955;">// Request body</span><br>
+<span style="color:#6a9955;">// Request body &mdash; send plain OTP; gateway encrypts it</span><br>
 {<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"loginHint"</span>: <span style="color:#ce9178;">"aadhaar"</span>,<br>
 &nbsp;&nbsp;<span style="color:#9cdcfe;">"txnId"</span>: <span style="color:#ce9178;">"&lt;txnId from generate-otp&gt;"</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"otp"</span>: <span style="color:#ce9178;">"123456"</span><br>
-}
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"otp"</span>: <span style="color:#ce9178;">"123456"</span>,<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"mobile"</span>: <span style="color:#ce9178;">"9876543210"</span>&nbsp;&nbsp;<span style="color:#6a9955;">// optional</span><br>
+}<br><br>
+<span style="color:#6a9955;">// Success response</span><br>
+{ <span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>, <span style="color:#9cdcfe;">"data"</span>: { <span style="color:#9cdcfe;">"ABHAProfile"</span>: { <span style="color:#9cdcfe;">"ABHANumber"</span>: <span style="color:#ce9178;">"14-xxxx"</span> } } }
                     </div>
                 </div>
             </div>
@@ -326,11 +326,12 @@ curl <?= esc($baseUrl) ?>/api/v3/health<br><br>
                 <div class="hp-card-body">
                     <p style="font-size:13px;color:#6c757d;">M1 — Send OTP to patient's mobile number for ABHA mobile linking flow.</p>
                     <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
+<span style="color:#6a9955;">// Request body &mdash; send plain 10-digit mobile; gateway encrypts it</span><br>
 {<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"loginHint"</span>: <span style="color:#ce9178;">"mobile"</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"loginId"</span>: <span style="color:#ce9178;">"9999999999"</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"otpSystem"</span>: <span style="color:#ce9178;">"abdm"</span><br>
-}
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"mobile"</span>: <span style="color:#ce9178;">"9999999999"</span><br>
+}<br><br>
+<span style="color:#6a9955;">// Response</span><br>
+{ <span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>, <span style="color:#9cdcfe;">"data"</span>: { <span style="color:#9cdcfe;">"txnId"</span>: <span style="color:#ce9178;">"..."</span> } }
                     </div>
                 </div>
             </div>

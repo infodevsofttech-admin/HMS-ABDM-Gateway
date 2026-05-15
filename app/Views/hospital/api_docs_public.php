@@ -339,10 +339,9 @@ Content-Type: application/json
                 <div class="card-body">
                     <p class="ep-desc">M1 — Trigger OTP to the patient's Aadhaar-linked mobile to begin ABHA creation or linking.</p>
                     <div class="code-block">
+<span class="cc">// Send plain 12-digit Aadhaar; gateway encrypts it</span>
 {
-  <span class="ck">"loginHint"</span>: <span class="cv">"aadhaar"</span>,
-  <span class="ck">"loginId"</span>: <span class="cv">"999941057058"</span>,
-  <span class="ck">"otpSystem"</span>: <span class="cv">"aadhaar"</span>
+  <span class="ck">"aadhaar"</span>: <span class="cv">"999941057058"</span>
 }
 
 <span class="cc">// Response</span>
@@ -356,11 +355,15 @@ Content-Type: application/json
                 <div class="card-body">
                     <p class="ep-desc">M1 — Submit the Aadhaar OTP to complete ABHA enrolment. Returns ABHA profile data on success.</p>
                     <div class="code-block">
+<span class="cc">// Send plain OTP; gateway encrypts it</span>
 {
-  <span class="ck">"loginHint"</span>: <span class="cv">"aadhaar"</span>,
   <span class="ck">"txnId"</span>: <span class="cv">"&lt;from generate-otp&gt;"</span>,
-  <span class="ck">"otp"</span>: <span class="cv">"123456"</span>
-}</div>
+  <span class="ck">"otp"</span>: <span class="cv">"123456"</span>,
+  <span class="ck">"mobile"</span>: <span class="cv">"9876543210"</span>  <span class="cc">// optional</span>
+}
+
+<span class="cc">// Success response</span>
+{ <span class="ck">"ok"</span>: <span class="cn">1</span>, <span class="ck">"data"</span>: { <span class="ck">"ABHAProfile"</span>: { <span class="ck">"ABHANumber"</span>: <span class="cv">"14-xxxx"</span> } } }</div>
                 </div>
             </div>
 
@@ -389,11 +392,13 @@ Content-Type: application/json
                 <div class="card-body">
                     <p class="ep-desc">M1 — Send OTP to patient's mobile number to begin ABHA mobile linking flow.</p>
                     <div class="code-block">
+<span class="cc">// Send plain 10-digit mobile; gateway encrypts it</span>
 {
-  <span class="ck">"loginHint"</span>: <span class="cv">"mobile"</span>,
-  <span class="ck">"loginId"</span>: <span class="cv">"9999999999"</span>,
-  <span class="ck">"otpSystem"</span>: <span class="cv">"abdm"</span>
-}</div>
+  <span class="ck">"mobile"</span>: <span class="cv">"9999999999"</span>
+}
+
+<span class="cc">// Response</span>
+{ <span class="ck">"ok"</span>: <span class="cn">1</span>, <span class="ck">"data"</span>: { <span class="ck">"txnId"</span>: <span class="cv">"..."</span> } }</div>
                 </div>
             </div>
 
