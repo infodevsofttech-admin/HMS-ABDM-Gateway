@@ -1355,17 +1355,39 @@ class AbdmGateway extends BaseController
 
     /**
      * RSA-OAEP encrypt $plain using ABDM's public key.
-     * Returns base64-encoded ciphertext, or '' on failure.
+     * Returns base64-encoded ciphertext.
+     * Throws RuntimeException on failure so callers can log it.
      */
     protected function encryptAbdmData(string $plain): string
     {
-        $publicKey = $this->getAbdmPublicKey();
-        if ($publicKey === '') {
-            return '';
+        $rawKey = $this->getAbdmPublicKey();
+        if ($rawKey === '') {
+            throw new \RuntimeException('Could not fetch ABDM public key for RSA encryption.');
         }
+
+        // ABDM returns a raw base64 DER (SubjectPublicKeyInfo) without PEM headers.
+        // Wrap it if headers are absent so openssl_pkey_get_public() can load it.
+        if (strpos($rawKey, '-----BEGIN') === false) {
+            $b64 = preg_replace('/\s+/', '', $rawKey);
+            $pem = "-----BEGIN PUBLIC KEY-----\n"
+                 . chunk_split($b64, 64, "\n")
+                 . "-----END PUBLIC KEY-----\n";
+        } else {
+            $pem = $rawKey;
+        }
+
+        $keyResource = openssl_pkey_get_public($pem);
+        if ($keyResource === false) {
+            throw new \RuntimeException('ABDM public key is invalid: ' . openssl_error_string());
+        }
+
         $encrypted = '';
-        $ok = openssl_public_encrypt($plain, $encrypted, $publicKey, OPENSSL_PKCS1_OAEP_PADDING);
-        return $ok ? base64_encode($encrypted) : '';
+        $ok = openssl_public_encrypt($plain, $encrypted, $keyResource, OPENSSL_PKCS1_OAEP_PADDING);
+        if (!$ok) {
+            throw new \RuntimeException('RSA-OAEP encryption failed: ' . openssl_error_string());
+        }
+
+        return base64_encode($encrypted);
     }
 
     /**
