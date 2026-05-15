@@ -1053,8 +1053,9 @@ class Admin extends BaseController
                 ->join('abdm_hospitals', 'abdm_hospitals.id = hms_credentials.hospital_id', 'left')
                 ->orderBy('hms_credentials.id', 'DESC')
                 ->findAll(200),
-            'message' => session()->getFlashdata('message'),
-            'error' => session()->getFlashdata('error'),
+            'message'       => session()->getFlashdata('message'),
+            'error'         => session()->getFlashdata('error'),
+            'generated_key' => session()->getFlashdata('generated_key'),
         ];
 
         return view('admin/hms_access', $data);
@@ -1073,21 +1074,20 @@ class Admin extends BaseController
         }
 
         return view('admin/hms_credential_detail', [
-            'credential' => $credential,
-            'message' => session()->getFlashdata('message'),
-            'error' => session()->getFlashdata('error'),
+            'credential'    => $credential,
+            'message'       => session()->getFlashdata('message'),
+            'error'         => session()->getFlashdata('error'),
+            'generated_key' => session()->getFlashdata('generated_key'),
         ]);
     }
 
     public function createHmsCredential()
     {
         $hospitalId = (int) $this->request->getPost('hospital_id');
-        $hmsName = trim((string) $this->request->getPost('hms_name'));
-        $hmsEndpoint = trim((string) $this->request->getPost('hms_api_endpoint'));
-        $hmsAuthType = 'api_key';
+        $hmsName    = trim((string) $this->request->getPost('hms_name'));
 
-        if ($hospitalId <= 0 || $hmsEndpoint === '') {
-            return redirect()->to('/admin/hms-access')->with('error', 'Hospital and API endpoint are required.');
+        if ($hospitalId <= 0) {
+            return redirect()->to('/admin/hms-access')->with('error', 'Please select a hospital.');
         }
 
         $hospital = $this->hospitalModel->find($hospitalId);
@@ -1095,62 +1095,59 @@ class Admin extends BaseController
             return redirect()->to('/admin/hms-access')->with('error', 'Hospital not found.');
         }
 
-        // Use hospital name as HMS name fallback if not provided
         if ($hmsName === '') {
             $hmsName = $hospital->hospital_name . ' HMS';
         }
 
-        $insertData = [
-            'hospital_id' => $hospitalId,
-            'hms_name' => $hmsName,
-            'hms_api_endpoint' => $hmsEndpoint,
-            'hms_auth_type' => $hmsAuthType,
-            'is_active' => 1,
-        ];
+        // Generate a secure API key for the HMS to use when calling this gateway
+        $plainKey = bin2hex(random_bytes(32)); // 64-char hex token
 
-        $hmsApiKey = trim((string) $this->request->getPost('hms_api_key'));
-        if ($hmsApiKey === '') {
-            return redirect()->to('/admin/hms-access')->with('error', 'API key is required.');
-        }
-        $insertData['hms_api_key'] = $this->encryptCredential($hmsApiKey);
+        $this->hmsCredentialModel->insert([
+            'hospital_id'      => $hospitalId,
+            'hms_name'         => $hmsName,
+            'hms_api_endpoint' => 'https://abdm-bridge.e-atria.in/api',
+            'hms_auth_type'    => 'api_key',
+            'hms_api_key'      => $this->encryptCredential($plainKey),
+            'is_active'        => 1,
+        ]);
 
-        $this->hmsCredentialModel->insert($insertData);
-
-        return redirect()->to('/admin/hms-access')->with('message', 'HMS credential created successfully.');
+        session()->setFlashdata('generated_key', $plainKey);
+        return redirect()->to('/admin/hms-access')->with('message', 'HMS credential created. Copy the API key below — it will not be shown again.');
     }
 
     public function updateHmsCredential(int $id)
     {
         $credential = $this->hmsCredentialModel->find($id);
         if ($credential === null) {
-            return redirect()->to('/admin/hms-access')->with('error', 'Credential not found.');
+            return redirect()->to("/admin/hms-credential/{$id}")->with('error', 'Credential not found.');
         }
 
-        $hmsEndpoint = trim((string) $this->request->getPost('hms_api_endpoint'));
-        if ($hmsEndpoint === '') {
-            return redirect()->to('/admin/hms-access')->with('error', 'API endpoint is required.');
-        }
-
+        $hmsName = trim((string) $this->request->getPost('hms_name'));
         $updateData = [
-            'hms_api_endpoint' => $hmsEndpoint,
+            'hms_name'  => $hmsName !== '' ? $hmsName : $credential->hms_name,
             'is_active' => (int) ($this->request->getPost('is_active') === '1'),
         ];
 
-        if ($credential->hms_auth_type === 'api_key') {
-            $hmsApiKey = trim((string) $this->request->getPost('hms_api_key'));
-            if ($hmsApiKey !== '') {
-                $updateData['hms_api_key'] = $this->encryptCredential($hmsApiKey);
-            }
-        } elseif ($credential->hms_auth_type === 'basic') {
-            $hmsPassword = trim((string) $this->request->getPost('hms_password'));
-            if ($hmsPassword !== '') {
-                $updateData['hms_password'] = $this->encryptCredential($hmsPassword);
-            }
-        }
-
         $this->hmsCredentialModel->update($id, $updateData);
 
-        return redirect()->to('/admin/hms-access')->with('message', 'HMS credential updated successfully.');
+        return redirect()->to("/admin/hms-credential/{$id}")->with('message', 'Credential updated successfully.');
+    }
+
+    public function regenerateHmsKey(int $id)
+    {
+        $credential = $this->hmsCredentialModel->find($id);
+        if ($credential === null) {
+            return redirect()->to('/admin/hms-access')->with('error', 'Credential not found.');
+        }
+
+        $plainKey = bin2hex(random_bytes(32));
+        $this->hmsCredentialModel->update($id, [
+            'hms_api_key'  => $this->encryptCredential($plainKey),
+            'is_verified'  => 0,
+        ]);
+
+        session()->setFlashdata('generated_key', $plainKey);
+        return redirect()->to("/admin/hms-credential/{$id}")->with('message', 'API key regenerated. Copy it below — it will not be shown again.');
     }
 
     public function testHmsCredential(int $id)

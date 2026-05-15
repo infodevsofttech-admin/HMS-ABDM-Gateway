@@ -23,6 +23,25 @@
     </div>
 <?php endif; ?>
 
+<?php if (!empty($generated_key)): ?>
+    <div class="alert alert-warning" role="alert">
+        <h4><i class="fa fa-key"></i> &nbsp;Generated API Key — Copy Now</h4>
+        <p>This key will <strong>not be shown again</strong>. Configure it in your HMS system.</p>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="generatedKeyBox" class="form-control"
+                   value="<?= esc($generated_key) ?>" readonly
+                   style="font-family:monospace;font-size:13px;background:#fffde7;">
+            <button type="button" class="btn btn-warning btn-sm" onclick="copyKey()">
+                <i class="fa fa-copy"></i> Copy
+            </button>
+        </div>
+        <p class="help-block" style="margin-top:6px;">
+            <strong>Gateway API Endpoint:</strong> <code>https://abdm-bridge.e-atria.in/api</code><br>
+            Use this key as the <code>Authorization: Bearer &lt;key&gt;</code> header in your HMS API calls.
+        </p>
+    </div>
+<?php endif; ?>
+
 <div class="row">
     <div class="col-md-12">
         <div class="x_panel">
@@ -33,10 +52,8 @@
             <div class="x_content">
                 <form method="post" action="/admin/hms-credential/create" class="form-horizontal">
                     <?= csrf_field() ?>
-                    <input type="hidden" name="hms_auth_type" value="api_key">
 
                     <?php if (!empty($selectedHospital)): ?>
-                        <!-- Hospital locked from Hospital List -->
                         <input type="hidden" name="hospital_id" value="<?= esc((string) $selectedHospital->id) ?>">
                         <div class="form-group">
                             <label class="col-sm-2 control-label">Hospital</label>
@@ -66,31 +83,33 @@
                     <div class="form-group">
                         <label class="col-sm-2 control-label">HMS System Name <small class="text-muted">(optional)</small></label>
                         <div class="col-sm-4">
-                            <input type="text" name="hms_name" class="form-control" placeholder="e.g. Meddata HMS (auto-filled if blank)">
+                            <input type="text" name="hms_name" class="form-control" placeholder="Auto-filled from hospital name if blank">
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label class="col-sm-2 control-label">API Endpoint</label>
                         <div class="col-sm-6">
-                            <input type="text" name="hms_api_endpoint" class="form-control"
-                                   value="https://abdm-bridge.e-atria.in/api" required>
-                            <p class="help-block"><i class="fa fa-info-circle"></i> Default gateway endpoint — change only if this hospital uses a different URL.</p>
+                            <p class="form-control-static">
+                                <code>https://abdm-bridge.e-atria.in/api</code>
+                                <span class="text-muted" style="font-size:12px;"> — fixed for all HMS systems</span>
+                            </p>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label class="col-sm-2 control-label">API Key</label>
                         <div class="col-sm-6">
-                            <input type="password" name="hms_api_key" class="form-control" placeholder="Enter API Key" required>
-                            <p class="help-block"><i class="fa fa-lock"></i> Stored encrypted. Auth method: <strong>API Key</strong> (recommended for gateway APIs).</p>
+                            <p class="form-control-static text-muted">
+                                <i class="fa fa-magic"></i> Auto-generated securely on submit. Shown once for you to copy.
+                            </p>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <div class="col-sm-offset-2 col-sm-10">
                             <button type="submit" class="btn btn-primary">
-                                <i class="fa fa-save"></i> Add HMS Credential
+                                <i class="fa fa-plus-circle"></i> Create &amp; Generate API Key
                             </button>
                         </div>
                     </div>
@@ -169,4 +188,16 @@
     </div>
 </div>
 
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script>
+function copyKey() {
+    var box = document.getElementById('generatedKeyBox');
+    box.select();
+    box.setSelectionRange(0, 99999);
+    document.execCommand('copy');
+    alert('API Key copied to clipboard!');
+}
+</script>
 <?= $this->endSection() ?>

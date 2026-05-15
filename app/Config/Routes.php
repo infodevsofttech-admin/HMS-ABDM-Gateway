@@ -124,6 +124,7 @@ $routes->group('admin', ['filter' => 'auth'], static function($routes) {
     $routes->get('hms-credential/(:num)', 'Admin::hmsCredentialDetail/$1');
     $routes->post('hms-credential/(:num)/update', 'Admin::updateHmsCredential/$1');
     $routes->post('hms-credential/(:num)/test', 'Admin::testHmsCredential/$1');
+    $routes->post('hms-credential/(:num)/regenerate-key', 'Admin::regenerateHmsKey/$1');
     $routes->post('hms-credential/(:num)/delete', 'Admin::deleteHmsCredential/$1');
 
     // Support Tickets
