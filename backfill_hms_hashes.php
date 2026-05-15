@@ -4,64 +4,60 @@
  * that have an hms_api_key but no hms_api_key_hash.
  *
  * Run on the server:  php backfill_hms_hashes.php
+ * No CI4 bootstrap needed — uses PDO directly with .env credentials.
  */
 
-// Bootstrap CodeIgniter 4
-define('FCPATH', __DIR__ . '/public/');
-chdir(__DIR__);
-require_once 'vendor/autoload.php';
-require_once 'app/Config/Paths.php';
-$paths = new Config\Paths();
-define('ROOTPATH', realpath($paths->rootDirectory) . DIRECTORY_SEPARATOR);
-define('APPPATH',  realpath($paths->appDirectory)  . DIRECTORY_SEPARATOR);
-define('WRITEPATH', realpath($paths->writableDirectory) . DIRECTORY_SEPARATOR);
-define('SYSTEMPATH', realpath($paths->systemDirectory) . DIRECTORY_SEPARATOR);
-define('PUBPATH', realpath($paths->publicDirectory) . DIRECTORY_SEPARATOR);
-define('CIPATH', realpath(SYSTEMPATH . '../') . DIRECTORY_SEPARATOR);
-define('CI_DEBUG', 0);
-define('ENVIRONMENT', 'production');
-require_once APPPATH . 'Config/Constants.php';
-
-// Minimal CI4 bootstrap to get DB
-$app = \Config\Services::codeigniter();
-$app->initialize();
-
-$db = \Config\Database::connect();
-
-// Decrypt helper: same logic as Hospital::decryptCredential()
-$decrypt = static function (string $data): string {
-    $decoded = base64_decode($data, true);
-    if ($decoded === false) { return ''; }
-    $parts = explode(':', $decoded);
-    return $parts[0] ?? '';
-};
-
-// Fetch all rows with a key but no hash
-$rows = $db->table('hms_credentials')
-    ->select('id, hms_api_key')
-    ->where('hms_api_key IS NOT NULL', null, false)
-    ->where('(hms_api_key_hash IS NULL OR hms_api_key_hash = \'\')', null, false)
-    ->get()
-    ->getResultArray();
-
-if (empty($rows)) {
-    echo "Nothing to backfill — all rows already have hms_api_key_hash.\n";
-    exit(0);
+// ── Parse .env ───────────────────────────────────────────────────────────────
+$env = [];
+$envFile = __DIR__ . '/.env';
+if (!file_exists($envFile)) { die("ERROR: .env not found at $envFile\n"); }
+foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+    $line = trim($line);
+    if ($line === '' || $line[0] === '#' || strpos($line, '=') === false) { continue; }
+    [$k, $v] = array_map('trim', explode('=', $line, 2));
+    $env[$k] = trim($v, '"\'');
 }
 
-$updated = 0;
-foreach ($rows as $row) {
-    $plain = $decrypt($row['hms_api_key']);
-    if ($plain === '') {
-        echo "  [SKIP] id={$row['id']} — could not decrypt key\n";
-        continue;
-    }
-    $hash = hash('sha256', $plain);
-    $db->table('hms_credentials')
-        ->where('id', $row['id'])
-        ->update(['hms_api_key_hash' => $hash]);
-    echo "  [OK]   id={$row['id']} — hash={$hash}\n";
-    $updated++;
+$host   = $env['database.default.hostname'] ?? $env['DB_HOST']     ?? '127.0.0.1';
+$db     = $env['database.default.database'] ?? $env['DB_DATABASE'] ?? '';
+$user   = $env['database.default.username'] ?? $env['DB_USER']     ?? '';
+$pass   = $env['database.default.password'] ?? $env['DB_PASS']     ?? '';
+$port   = $env['database.default.port']     ?? $env['DB_PORT']     ?? '3306';
+
+if (!$db || !$user) { die("ERROR: Could not read DB credentials from .env\n"); }
+
+// ── Connect ──────────────────────────────────────────────────────────────────
+try {
+    $pdo = new PDO("mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4", $user, $pass);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die("ERROR: DB connection failed: " . $e->getMessage() . "\n");
 }
 
-echo "\nDone. Updated $updated row(s).\n";
+// ── Backfill with a single UPDATE using MySQL's built-ins ────────────────────
+// encryptCredential stores:  base64_encode( plainKey . ':' . hmac )
+// decryptCredential returns: $parts[0] of explode(':', base64_decode(...))
+// MySQL equivalent:          SUBSTRING_INDEX(FROM_BASE64(hms_api_key), ':', 1)
+// SHA256:                    SHA2(..., 256)
+
+$sql = "
+    UPDATE hms_credentials
+    SET    hms_api_key_hash = SHA2(SUBSTRING_INDEX(FROM_BASE64(hms_api_key), ':', 1), 256)
+    WHERE  hms_api_key IS NOT NULL
+      AND  hms_api_key != ''
+      AND  (hms_api_key_hash IS NULL OR hms_api_key_hash = '')
+";
+
+$affected = $pdo->exec($sql);
+echo "Done. Rows updated: $affected\n";
+
+// ── Verify ───────────────────────────────────────────────────────────────────
+$rows = $pdo->query("SELECT id, hms_name, LEFT(hms_api_key_hash,16) AS hash_prefix
+                     FROM hms_credentials
+                     WHERE hms_api_key_hash IS NOT NULL AND hms_api_key_hash != ''")
+            ->fetchAll(PDO::FETCH_ASSOC);
+echo "\nAll credentialed rows now:\n";
+foreach ($rows as $r) {
+    printf("  id=%-4s  %-30s  hash_prefix=%s...\n", $r['id'], $r['hms_name'], $r['hash_prefix']);
+}
+
