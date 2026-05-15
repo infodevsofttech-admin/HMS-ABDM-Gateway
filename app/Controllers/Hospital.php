@@ -911,8 +911,10 @@ class Hospital extends BaseController
         $name               = trim((string) $this->request->getPost('name'));
         $hprId              = trim((string) $this->request->getPost('hpr_id'));
         $designation        = trim((string) $this->request->getPost('designation'));
-        $specialization     = trim((string) $this->request->getPost('specialization'));
-        $specializationCode = trim((string) $this->request->getPost('specialization_code'));
+        $specsArr           = json_decode(trim((string) $this->request->getPost('specializations_json')) ?: '[]', true);
+        if (!is_array($specsArr)) $specsArr = [];
+        $specsArr           = array_values(array_filter($specsArr, fn($s) => !empty($s['term'])));
+        $specializationValue = !empty($specsArr) ? json_encode($specsArr, JSON_UNESCAPED_UNICODE) : null;
         $department         = trim((string) $this->request->getPost('department'));
         $registrationNumber = trim((string) $this->request->getPost('registration_number'));
         $back = '/portal/hpr-professionals';
@@ -938,8 +940,8 @@ class Hospital extends BaseController
             'name'                => $name,
             'hpr_id'              => $hprId,
             'designation'         => $designation ?: null,
-            'specialization'      => $specialization ?: null,
-            'specialization_code' => $specializationCode ?: null,
+            'specialization'      => $specializationValue,
+            'specialization_code' => null,
             'department'          => $department ?: null,
             'registration_number' => $registrationNumber ?: null,
             'is_active'           => 1,
