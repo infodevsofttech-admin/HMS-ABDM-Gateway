@@ -393,12 +393,8 @@ class AbdmGateway extends BaseController
             ]);
         }
 
-        // txnId: pass-through if HMS provides one (Mobile Update flow), else empty string (fresh mobile link)
-        $txnId = trim((string) ($body['txnId'] ?? $body['transactionId'] ?? $body['transaction_id'] ?? ''));
-
         $abdmPayload = [
-            'txnId'     => $txnId,
-            'scope'     => ['abha-enrol', 'mobile-verify'],
+            'scope'     => ['abha-login', 'mobile-verify'],
             'loginHint' => 'mobile',
             'loginId'   => $encMobile,
             'otpSystem' => 'abdm',
@@ -464,13 +460,12 @@ class AbdmGateway extends BaseController
         }
 
         $abdmPayload = [
-            'scope'    => ['abha-enrol', 'mobile-verify'],
+            'scope'    => ['abha-login', 'mobile-verify'],
             'authData' => [
                 'authMethods' => ['otp'],
                 'otp' => [
-                    'timeStamp' => gmdate('Y-m-d\TH:i:s.000\Z'),
-                    'txnId'     => $txnId,
-                    'otpValue'  => $encOtp,
+                    'txnId'    => $txnId,
+                    'otpValue' => $encOtp,
                 ],
             ],
         ];
