@@ -68,7 +68,7 @@ class AbdmGateway extends BaseConfig
     public string $m1AadhaarGenerateOtpPath = '/abha/api/v3/enrollment/request/otp';
     public string $m1AadhaarVerifyOtpPath = '/abha/api/v3/enrollment/enrol/byAadhaar';
     public string $m1MobileGenerateOtpPath = '/abha/api/v3/enrollment/request/otp';
-    public string $m1MobileVerifyOtpPath = '/abha/api/v3/enrollment/enrol/byMobile';
+    public string $m1MobileVerifyOtpPath = '/abha/api/v3/enrollment/auth/byAbdm';
 
     /**
      * ABDM M3 Timeout (seconds)
