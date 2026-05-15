@@ -147,69 +147,110 @@
         <?php endif; ?>
     </div>
 
-<!-- ABHA Card Modal -->
-<div id="abhaCardModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;">
-    <div style="background:#fff;border-radius:12px;max-width:440px;width:95%;box-shadow:0 8px 32px rgba(0,0,0,0.28);overflow:hidden;">
-        <div style="background:#1d4ed8;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;">
-            <span style="color:#fff;font-weight:700;font-size:15px;"><i class="fa fa-id-card" style="margin-right:7px;"></i>ABHA Health Card</span>
+<!-- ABHA Card Modal — NHA official style -->
+<div id="abhaCardModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:10px;max-width:600px;width:96%;box-shadow:0 12px 40px rgba(0,0,0,0.3);overflow:hidden;">
+        <div style="background:#1a3a6b;padding:11px 18px;display:flex;align-items:center;justify-content:space-between;">
+            <span style="color:#fff;font-weight:700;font-size:14px;"><i class="fa fa-id-card" style="margin-right:7px;"></i>ABHA Health Card</span>
             <button onclick="closeAbhaCard()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
         </div>
-        <div style="padding:18px 20px 10px;">
-            <div id="abhaCardInner" style="border:1.5px solid #e5e7eb;border-radius:10px;padding:16px 18px;background:#f0f4ff;">
-                <div style="display:flex;align-items:center;margin-bottom:12px;">
-                    <div style="background:#1d4ed8;color:#fff;font-weight:900;font-size:13px;padding:4px 10px;border-radius:5px;letter-spacing:.05em;">ABDM</div>
-                    <span style="margin-left:8px;font-size:11px;color:#6b7280;font-weight:600;">Ayushman Bharat Digital Mission</span>
-                </div>
-                <div style="display:flex;gap:14px;align-items:flex-start;">
-                    <div id="cardPhoto" style="width:64px;height:64px;border-radius:50%;background:#c7d2fe;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:2px solid #1d4ed8;">
-                        <span style="font-size:28px;">👤</span>
+        <div style="padding:14px 16px 8px;">
+            <div id="abhaCardInner" style="border:1px solid #ccc;border-radius:4px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+                <div style="background:#1a56b0;padding:10px 16px;display:flex;align-items:center;gap:10px;">
+                    <div style="background:#fff;border-radius:5px;padding:5px 8px;text-align:center;flex-shrink:0;line-height:1.3;">
+                        <div style="font-size:7px;color:#1a56b0;font-weight:700;text-transform:uppercase;">national</div>
+                        <div style="font-size:7px;color:#1a56b0;font-weight:700;text-transform:uppercase;">health</div>
+                        <div style="font-size:7px;color:#1a56b0;font-weight:700;text-transform:uppercase;">authority</div>
                     </div>
-                    <div style="flex:1;min-width:0;">
-                        <div id="cardName" style="font-weight:800;font-size:16px;color:#1e293b;margin-bottom:3px;"></div>
-                        <div id="cardAbha" style="font-size:13px;font-weight:700;color:#1d4ed8;letter-spacing:.04em;margin-bottom:5px;"></div>
-                        <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                            <span style="font-size:12px;color:#374151;"><strong>DOB:</strong> <span id="cardDob"></span></span>
-                            <span style="font-size:12px;color:#374151;"><strong>Gender:</strong> <span id="cardGender"></span></span>
+                    <div style="flex:1;text-align:center;color:#fff;padding:0 6px;">
+                        <div style="font-size:14px;font-weight:700;line-height:1.3;">Ayushman Bharat Health Account (ABHA)</div>
+                        <div style="font-size:11px;margin-top:4px;line-height:1.3;">आयुष्मान भारत स्वास्थ्य खाता (आभा)</div>
+                    </div>
+                    <div style="width:42px;height:42px;background:#fff;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,0.5);">
+                        <span style="font-size:7.5px;font-weight:900;color:#1a56b0;text-align:center;line-height:1.2;">ABDM</span>
+                    </div>
+                </div>
+                <div style="background:#fff;padding:14px 16px;display:flex;gap:14px;align-items:flex-start;">
+                    <div id="cardPhoto" style="width:90px;height:108px;background:#f3f4f6;flex-shrink:0;overflow:hidden;border:1px solid #bbb;display:flex;align-items:center;justify-content:center;">
+                        <span style="font-size:32px;">👤</span>
+                    </div>
+                    <div style="flex:1;min-width:0;padding-left:4px;">
+                        <div style="margin-bottom:10px;">
+                            <div style="font-size:10px;color:#6b7280;">Name/नाम</div>
+                            <div id="cardName" style="font-size:17px;font-weight:700;color:#111;margin-top:1px;"></div>
                         </div>
-                        <div id="cardMobile" style="font-size:12px;color:#374151;margin-top:3px;"></div>
+                        <div style="margin-bottom:10px;">
+                            <div style="font-size:10px;color:#6b7280;">ABHA number/आभा-संख्या</div>
+                            <div id="cardAbhaLarge" style="font-size:15px;font-weight:700;color:#111;margin-top:1px;letter-spacing:.02em;"></div>
+                        </div>
+                        <div>
+                            <div style="font-size:10px;color:#6b7280;">ABHA address/आभा पता</div>
+                            <div id="cardAbha" style="font-size:13px;font-weight:600;color:#111;margin-top:1px;word-break:break-all;"></div>
+                        </div>
                     </div>
+                    <div id="cardQr" style="width:110px;height:110px;flex-shrink:0;display:flex;align-items:center;justify-content:center;"></div>
                 </div>
-                <div style="margin-top:14px;background:#fff;border-radius:7px;padding:10px 14px;text-align:center;border:1px dashed #93c5fd;">
-                    <div style="font-size:11px;color:#6b7280;margin-bottom:3px;">ABHA Number</div>
-                    <div id="cardAbhaLarge" style="font-size:19px;font-weight:900;color:#1d4ed8;letter-spacing:.08em;"></div>
+                <div style="border-top:1px solid #e5e7eb;padding:10px 16px;display:flex;background:#fafbfc;">
+                    <div style="flex:1;">
+                        <div style="font-size:10px;color:#6b7280;">Gender/लिंग</div>
+                        <div id="cardGender" style="font-size:13px;font-weight:700;color:#111;margin-top:2px;"></div>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-size:10px;color:#6b7280;">Date of birth/जन्मतिथि</div>
+                        <div id="cardDob" style="font-size:13px;font-weight:700;color:#111;margin-top:2px;"></div>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-size:10px;color:#6b7280;">Mobile/मोबाइल</div>
+                        <div id="cardMobile" style="font-size:13px;font-weight:700;color:#111;margin-top:2px;"></div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div style="padding:10px 20px 16px;display:flex;gap:10px;justify-content:flex-end;">
+        <div style="padding:8px 16px 14px;display:flex;gap:10px;justify-content:flex-end;">
             <button onclick="printAbhaCard()" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;"><i class="fa fa-print"></i> Print Card</button>
             <button onclick="closeAbhaCard()" style="background:#f1f5f9;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer;">Close</button>
         </div>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
 function showAbhaCard(btn) {
     var p = JSON.parse(btn.getAttribute('data-profile'));
-    document.getElementById('cardName').textContent     = p.name || '—';
-    document.getElementById('cardAbha').textContent     = p.abha_address || '';
+    document.getElementById('cardName').textContent      = p.name || '—';
+    document.getElementById('cardAbha').textContent      = p.abha_address || '';
     document.getElementById('cardAbhaLarge').textContent = formatAbhaNum(p.abha_number);
-    document.getElementById('cardDob').textContent      = p.dob || '—';
-    document.getElementById('cardGender').textContent   = genderLabel(p.gender);
-    document.getElementById('cardMobile').innerHTML     = p.mobile ? '<strong>Mobile:</strong> ' + p.mobile : '';
+    document.getElementById('cardGender').textContent    = genderLabel(p.gender);
+    document.getElementById('cardDob').textContent       = p.dob || '—';
+    document.getElementById('cardMobile').textContent    = p.mobile || '—';
     var photoEl = document.getElementById('cardPhoto');
     if (p.photo) {
-        photoEl.innerHTML = '<img src="data:image/jpeg;base64,' + p.photo + '" style="width:64px;height:64px;object-fit:cover;border-radius:50%;">';
+        photoEl.innerHTML = '<img src="data:image/jpeg;base64,' + p.photo + '" style="width:90px;height:108px;object-fit:cover;">';
     } else {
-        photoEl.innerHTML = '<span style="font-size:28px;">👤</span>';
+        photoEl.innerHTML = '<span style="font-size:32px;">👤</span>';
     }
-    var modal = document.getElementById('abhaCardModal');
-    modal.style.display = 'flex';
+    var qrEl = document.getElementById('cardQr');
+    qrEl.innerHTML = '';
+    var qrText = p.abha_number || p.abha_address || '';
+    if (typeof QRCode !== 'undefined' && qrText) {
+        new QRCode(qrEl, { text: qrText, width: 110, height: 110, correctLevel: QRCode.CorrectLevel.M });
+    }
+    document.getElementById('abhaCardModal').style.display = 'flex';
 }
 function closeAbhaCard() { document.getElementById('abhaCardModal').style.display = 'none'; }
 function printAbhaCard() {
-    var cardHtml = document.getElementById('abhaCardInner').innerHTML;
-    var w = window.open('', '_blank', 'width=520,height=480');
-    w.document.write('<html><head><title>ABHA Card</title><style>body{font-family:sans-serif;margin:20px;}@media print{body{margin:0;}}</style></head><body>' + cardHtml + '<br><button onclick="window.print()" style="margin-top:10px;padding:8px 20px;background:#1d4ed8;color:#fff;border:none;border-radius:5px;cursor:pointer;">Print</button></body></html>');
+    var qrEl = document.getElementById('cardQr');
+    var qrCanvas = qrEl ? qrEl.querySelector('canvas') : null;
+    if (qrCanvas) {
+        var dataUrl = qrCanvas.toDataURL('image/png');
+        qrEl.innerHTML = '<img src="' + dataUrl + '" style="width:110px;height:110px;">';
+    }
+    var cardHtml = document.getElementById('abhaCardInner').outerHTML;
+    var w = window.open('', '_blank', 'width=660,height=560');
+    w.document.write('<!DOCTYPE html><html><head><title>ABHA Card</title><style>body{font-family:Arial,sans-serif;margin:20px;}@media print{body{margin:0;}.no-print{display:none;}}</style></head><body>');
+    w.document.write(cardHtml);
+    w.document.write('<br><button class="no-print" onclick="window.print()" style="margin-top:12px;padding:8px 22px;background:#1d4ed8;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px;">🖨 Print</button>');
+    w.document.write('</body></html>');
     w.document.close();
 }
 function formatAbhaNum(n) {
