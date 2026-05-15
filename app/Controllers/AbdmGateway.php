@@ -1344,7 +1344,8 @@ class AbdmGateway extends BaseController
                 'pages'  => (int) ceil($total / $limit),
             ],
             'summary' => $counts,
-            'tokens'  => array_map(static function (array $t): array {
+            'tokens'  => array_map(static function ($t): array {
+                $t = (array) $t;
                 return [
                     'id'           => (int) $t['id'],
                     'token_number' => (int) $t['token_number'],
