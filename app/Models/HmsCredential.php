@@ -54,34 +54,39 @@ class HmsCredential extends Model
      */
     public function testConnection(object $credential): array
     {
-        try {
-            $client = new \GuzzleHttp\Client([
-                'timeout' => 10,
-                'verify' => false,
-            ]);
+        $url = rtrim((string) $credential->hms_api_endpoint, '/') . '/health';
 
-            $headers = ['Content-Type' => 'application/json'];
+        $curlHeaders = ['Content-Type: application/json'];
 
-            if ($credential->hms_auth_type === 'api_key') {
-                $headers['Authorization'] = 'Bearer ' . $credential->hms_api_key;
-            } elseif ($credential->hms_auth_type === 'basic') {
-                $auth = [$credential->hms_username, $credential->hms_password];
-                $headers['Authorization'] = 'Basic ' . base64_encode("{$auth[0]}:{$auth[1]}");
-            }
-
-            $response = $client->get($credential->hms_api_endpoint . '/health', ['headers' => $headers]);
-
-            return [
-                'success' => $response->getStatusCode() >= 200 && $response->getStatusCode() < 300,
-                'status_code' => $response->getStatusCode(),
-                'message' => 'Connection successful',
-            ];
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'status_code' => 0,
-                'message' => $e->getMessage(),
-            ];
+        if ($credential->hms_auth_type === 'api_key') {
+            $curlHeaders[] = 'Authorization: Bearer ' . $credential->hms_api_key;
+        } elseif ($credential->hms_auth_type === 'basic') {
+            $curlHeaders[] = 'Authorization: Basic ' . base64_encode($credential->hms_username . ':' . $credential->hms_password);
         }
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 10,
+            CURLOPT_HTTPHEADER     => $curlHeaders,
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+
+        curl_exec($ch);
+        $httpCode  = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError !== '') {
+            return ['success' => false, 'status_code' => 0, 'message' => $curlError];
+        }
+
+        $success = $httpCode >= 200 && $httpCode < 300;
+        return [
+            'success'     => $success,
+            'status_code' => $httpCode,
+            'message'     => $success ? 'Connection successful' : "HTTP {$httpCode}",
+        ];
     }
 }
