@@ -99,28 +99,28 @@ $hfrId      = is_object($hospital) ? ($hospital->hfr_id ?? 'YOUR_HFR_ID') : 'YOU
                             <td style="padding:10px 16px;">Validate an ABHA ID or ABHA Address</td>
                             <td style="padding:10px 16px;"><span class="hb hb-blue" style="font-size:10px;">Bearer</span></td>
                         </tr>
-                        <tr>
+                        <tr style="background:#fff8e1;">
                             <td style="padding:10px 16px;"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">POST</span></td>
                             <td style="padding:10px 16px;font-family:monospace;font-size:12px;">/api/v3/abha/aadhaar/generate-otp</td>
-                            <td style="padding:10px 16px;">M1 — Send OTP to Aadhaar-linked mobile for ABHA creation</td>
+                            <td style="padding:10px 16px;"><strong>Create ABHA</strong> — Step 1: OTP to Aadhaar-linked mobile (new patient)</td>
                             <td style="padding:10px 16px;"><span class="hb hb-blue" style="font-size:10px;">Bearer</span></td>
                         </tr>
-                        <tr>
+                        <tr style="background:#fff8e1;">
                             <td style="padding:10px 16px;"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">POST</span></td>
                             <td style="padding:10px 16px;font-family:monospace;font-size:12px;">/api/v3/abha/aadhaar/verify-otp</td>
-                            <td style="padding:10px 16px;">M1 — Verify OTP and enrol/link ABHA via Aadhaar</td>
+                            <td style="padding:10px 16px;"><strong>Create ABHA</strong> — Step 2: Verify OTP and create/retrieve ABHA number</td>
                             <td style="padding:10px 16px;"><span class="hb hb-blue" style="font-size:10px;">Bearer</span></td>
                         </tr>
-                        <tr>
+                        <tr style="background:#e8f4fd;">
                             <td style="padding:10px 16px;"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">POST</span></td>
                             <td style="padding:10px 16px;font-family:monospace;font-size:12px;">/api/v3/abha/mobile/generate-otp</td>
-                            <td style="padding:10px 16px;">M1 — Send OTP for mobile-based ABHA flow</td>
+                            <td style="padding:10px 16px;"><strong>Link ABHA</strong> — Step 1: OTP to mobile (existing patient with ABHA)</td>
                             <td style="padding:10px 16px;"><span class="hb hb-blue" style="font-size:10px;">Bearer</span></td>
                         </tr>
-                        <tr>
+                        <tr style="background:#e8f4fd;">
                             <td style="padding:10px 16px;"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">POST</span></td>
                             <td style="padding:10px 16px;font-family:monospace;font-size:12px;">/api/v3/abha/mobile/verify-otp</td>
-                            <td style="padding:10px 16px;">M1 — Verify mobile OTP and complete ABHA link</td>
+                            <td style="padding:10px 16px;"><strong>Link ABHA</strong> — Step 2: Verify OTP and get full ABHA profile</td>
                             <td style="padding:10px 16px;"><span class="hb hb-blue" style="font-size:10px;">Bearer</span></td>
                         </tr>
                         <tr>
@@ -248,7 +248,124 @@ Content-Type: application/json<br><br>
         </div>
     </div>
 
-    <!-- Individual Endpoints -->
+    <!-- ABHA Integration Flows -->
+    <div class="row">
+        <div class="col-md-12">
+            <h5 style="font-weight:700;color:#343a40;margin:24px 0 14px;border-bottom:2px solid #dee2e6;padding-bottom:8px;">ABHA Integration Flows</h5>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+                <div style="background:#fff8e1;border:2px solid #ffc107;border-radius:10px;padding:16px 20px;">
+                    <div style="font-size:13px;font-weight:700;color:#856404;margin-bottom:6px;">🆕 Flow 1 — Create ABHA (Aadhaar OTP)</div>
+                    <div style="font-size:12px;color:#856404;line-height:1.6;">Patient <strong>does not have ABHA</strong>.<br>Requires Aadhaar number. OTP sent to Aadhaar-linked mobile.</div>
+                </div>
+                <div style="background:#e8f4fd;border:2px solid #17a2b8;border-radius:10px;padding:16px 20px;">
+                    <div style="font-size:13px;font-weight:700;color:#0c5460;margin-bottom:6px;">🔗 Flow 2 — Link Existing ABHA (Mobile OTP)</div>
+                    <div style="font-size:12px;color:#0c5460;line-height:1.6;">Patient <strong>already has ABHA</strong>.<br>Requires mobile registered with ABDM. Returns full profile.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flow 1: Create ABHA -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="hp-card" style="border-top:4px solid #ffc107;">
+                <div class="hp-card-head" style="background:#fff8e1;">🆕 Flow 1: Create ABHA via Aadhaar OTP &nbsp;<span style="font-size:11px;font-weight:400;color:#856404;">2 steps · Patient must have Aadhaar</span></div>
+                <div class="hp-card-body">
+                    <div style="margin-bottom:20px;">
+                        <div style="font-size:13px;font-weight:700;margin-bottom:6px;"><span style="background:#ffc107;color:#fff;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;margin-right:6px;">1</span> Generate OTP &mdash; <code>POST /api/v3/abha/aadhaar/generate-otp</code></div>
+                        <p style="font-size:12px;color:#6c757d;margin-bottom:8px;">Send patient's Aadhaar number (plain, 12 digits). Gateway encrypts it. ABDM sends OTP to Aadhaar-linked mobile. Save the <code>txnId</code> from response.</p>
+                        <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;">
+<span style="color:#6a9955;">// Request</span><br>
+{<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"aadhaar"</span>: <span style="color:#ce9178;">"999941057058"</span>&nbsp;&nbsp;<span style="color:#6a9955;">// plain 12-digit Aadhaar</span><br>
+}<br><br>
+<span style="color:#6a9955;">// Response</span><br>
+{<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>,<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"data"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"txnId"</span>: <span style="color:#ce9178;">"c82482fa-675b-4612-af13-15d39d5369ed"</span>,&nbsp;&nbsp;<span style="color:#6a9955;">// ← save this!</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"message"</span>: <span style="color:#ce9178;">"OTP sent to Aadhaar registered mobile number ending with ******8717"</span><br>
+&nbsp;&nbsp;}<br>
+}
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:13px;font-weight:700;margin-bottom:6px;"><span style="background:#ffc107;color:#fff;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;margin-right:6px;">2</span> Verify OTP &mdash; <code>POST /api/v3/abha/aadhaar/verify-otp</code></div>
+                        <p style="font-size:12px;color:#6c757d;margin-bottom:8px;">Submit OTP entered by patient + txnId from Step 1. On success, returns ABHA number and tokens. Store <code>ABHANumber</code> in HMS patient record.</p>
+                        <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;">
+<span style="color:#6a9955;">// Request</span><br>
+{<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"txnId"</span>: <span style="color:#ce9178;">"c82482fa-675b-4612-af13-15d39d5369ed"</span>,&nbsp;<span style="color:#6a9955;">// from Step 1</span><br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"otp"</span>: <span style="color:#ce9178;">"123456"</span>,&nbsp;&nbsp;<span style="color:#6a9955;">// 6-digit OTP, gateway encrypts it</span><br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"mobile"</span>: <span style="color:#ce9178;">"9876543210"</span>&nbsp;&nbsp;<span style="color:#6a9955;">// optional</span><br>
+}<br><br>
+<span style="color:#6a9955;">// Response — new ABHA</span><br>
+{ <span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>, <span style="color:#9cdcfe;">"data"</span>: { <span style="color:#9cdcfe;">"ABHAProfile"</span>: { <span style="color:#9cdcfe;">"ABHANumber"</span>: <span style="color:#ce9178;">"91-5101-6530-5101"</span>, <span style="color:#9cdcfe;">"name"</span>: <span style="color:#ce9178;">"..."</span> }, <span style="color:#9cdcfe;">"tokens"</span>: {<span style="color:#6a9955;">...}</span> } }<br><br>
+<span style="color:#6a9955;">// Response — ABHA already exists</span><br>
+{ <span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>, <span style="color:#9cdcfe;">"data"</span>: { <span style="color:#9cdcfe;">"message"</span>: <span style="color:#ce9178;">"This account already exist"</span>, <span style="color:#9cdcfe;">"tokens"</span>: { <span style="color:#9cdcfe;">"token"</span>: <span style="color:#ce9178;">"eyJ..."</span> } } }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flow 2: Link ABHA -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="hp-card" style="border-top:4px solid #17a2b8;">
+                <div class="hp-card-head" style="background:#e8f4fd;">🔗 Flow 2: Link Existing ABHA via Mobile OTP &nbsp;<span style="font-size:11px;font-weight:400;color:#0c5460;">2 steps · Patient must have existing ABHA</span></div>
+                <div class="hp-card-body">
+                    <div style="margin-bottom:20px;">
+                        <div style="font-size:13px;font-weight:700;margin-bottom:6px;"><span style="background:#17a2b8;color:#fff;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;margin-right:6px;">1</span> Generate OTP &mdash; <code>POST /api/v3/abha/mobile/generate-otp</code></div>
+                        <p style="font-size:12px;color:#6c757d;margin-bottom:8px;">Send patient's mobile number (plain, 10 digits). Gateway encrypts it. ABDM sends OTP if mobile is registered with ABDM. Save the <code>txnId</code> from response.</p>
+                        <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;">
+<span style="color:#6a9955;">// Request</span><br>
+{<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"mobile"</span>: <span style="color:#ce9178;">"9999999999"</span>&nbsp;&nbsp;<span style="color:#6a9955;">// plain 10-digit mobile</span><br>
+}<br><br>
+<span style="color:#6a9955;">// Response</span><br>
+{<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>,<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"data"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"txnId"</span>: <span style="color:#ce9178;">"1f491656-812e-4261-8f8b-8eb2f562ba3b"</span>,&nbsp;&nbsp;<span style="color:#6a9955;">// ← save this!</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"message"</span>: <span style="color:#ce9178;">"OTP sent to mobile number ending with ******9999"</span><br>
+&nbsp;&nbsp;}<br>
+}
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:13px;font-weight:700;margin-bottom:6px;"><span style="background:#17a2b8;color:#fff;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;margin-right:6px;">2</span> Verify OTP &mdash; <code>POST /api/v3/abha/mobile/verify-otp</code></div>
+                        <p style="font-size:12px;color:#6c757d;margin-bottom:8px;">Submit OTP and txnId. The gateway verifies OTP with ABDM and automatically fetches the full ABHA profile in a single response. Store <code>ABHANumber</code> in HMS patient record.</p>
+                        <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;">
+<span style="color:#6a9955;">// Request</span><br>
+{<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"txnId"</span>: <span style="color:#ce9178;">"1f491656-812e-4261-8f8b-8eb2f562ba3b"</span>,&nbsp;<span style="color:#6a9955;">// from Step 1</span><br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"otp"</span>: <span style="color:#ce9178;">"654321"</span>&nbsp;&nbsp;<span style="color:#6a9955;">// 6-digit OTP, gateway encrypts it</span><br>
+}<br><br>
+<span style="color:#6a9955;">// Response</span><br>
+{<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>,<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"data"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"authResult"</span>: <span style="color:#ce9178;">"success"</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"token"</span>: <span style="color:#ce9178;">"eyJhbGci..."</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"profile"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"ABHANumber"</span>: <span style="color:#ce9178;">"91-5101-6530-5101"</span>,&nbsp;&nbsp;<span style="color:#6a9955;">// ← store in HMS</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"name"</span>: <span style="color:#ce9178;">"MEERA BISHT"</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"gender"</span>: <span style="color:#ce9178;">"F"</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"dob"</span>: <span style="color:#ce9178;">"01-01-1990"</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">"mobile"</span>: <span style="color:#ce9178;">"9999999999"</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;}<br>
+}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Other Individual Endpoints -->
     <div class="row">
         <div class="col-md-6">
 
@@ -256,11 +373,9 @@ Content-Type: application/json<br><br>
             <div class="hp-card">
                 <div class="hp-card-head"><span style="background:#28a745;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;margin-right:8px;">GET</span>/api/v3/health</div>
                 <div class="hp-card-body">
-                    <p style="font-size:13px;color:#6c757d;">Public. No authentication required. Use to verify gateway reachability.</p>
-                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
-curl <?= esc($baseUrl) ?>/api/v3/health<br><br>
-<span style="color:#6a9955;">// Response</span><br>
-{ <span style="color:#9cdcfe;">"status"</span>: <span style="color:#ce9178;">"ok"</span>, <span style="color:#9cdcfe;">"mode"</span>: <span style="color:#ce9178;">"live"</span>, <span style="color:#9cdcfe;">"version"</span>: <span style="color:#ce9178;">"1.0.0"</span> }
+                    <p style="font-size:13px;color:#6c757d;">Public. No auth required.</p>
+                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;">
+{ <span style="color:#9cdcfe;">"status"</span>: <span style="color:#ce9178;">"ok"</span>, <span style="color:#9cdcfe;">"mode"</span>: <span style="color:#ce9178;">"live"</span> }
                     </div>
                 </div>
             </div>
@@ -269,50 +384,26 @@ curl <?= esc($baseUrl) ?>/api/v3/health<br><br>
             <div class="hp-card">
                 <div class="hp-card-head"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;margin-right:8px;">POST</span>/api/v3/abha/validate</div>
                 <div class="hp-card-body">
-                    <p style="font-size:13px;color:#6c757d;">Check whether an ABHA ID or ABHA Address is valid and active.</p>
-                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
-<span style="color:#6a9955;">// Request body (one of)</span><br>
-{ <span style="color:#9cdcfe;">"abha_id"</span>: <span style="color:#ce9178;">"14-1234-5678-9012"</span> }<br>
-{ <span style="color:#9cdcfe;">"abha_address"</span>: <span style="color:#ce9178;">"patient@abdm"</span> }<br><br>
-<span style="color:#6a9955;">// Success response</span><br>
-{<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"data"</span>: { <span style="color:#9cdcfe;">"status"</span>: <span style="color:#ce9178;">"VALID"</span> }<br>
-}
-                    </div>
-                </div>
-            </div>
-
-            <!-- ABHA Aadhaar OTP -->
-            <div class="hp-card">
-                <div class="hp-card-head"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;margin-right:8px;">POST</span>/api/v3/abha/aadhaar/generate-otp</div>
-                <div class="hp-card-body">
-                    <p style="font-size:13px;color:#6c757d;">M1 — Trigger an OTP to the patient's Aadhaar-linked mobile to begin ABHA creation/linking.</p>
-                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
-<span style="color:#6a9955;">// Request body &mdash; send plain 12-digit Aadhaar; gateway encrypts it</span><br>
-{<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"aadhaar"</span>: <span style="color:#ce9178;">"999941057058"</span><br>
-}<br><br>
+                    <p style="font-size:13px;color:#6c757d;">Check if an ABHA ID or ABHA Address is valid and active.</p>
+                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;">
+{ <span style="color:#9cdcfe;">"abha_id"</span>: <span style="color:#ce9178;">"91-5101-6530-5101"</span> }<br>
 <span style="color:#6a9955;">// Response</span><br>
-{ <span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>, <span style="color:#9cdcfe;">"data"</span>: { <span style="color:#9cdcfe;">"txnId"</span>: <span style="color:#ce9178;">"..."</span> } }
+{ <span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>, <span style="color:#9cdcfe;">"data"</span>: { <span style="color:#9cdcfe;">"status"</span>: <span style="color:#ce9178;">"VALID"</span> } }
                     </div>
                 </div>
             </div>
 
-            <!-- ABHA Aadhaar Verify OTP -->
+            <!-- Consent -->
             <div class="hp-card">
-                <div class="hp-card-head"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;margin-right:8px;">POST</span>/api/v3/abha/aadhaar/verify-otp</div>
+                <div class="hp-card-head"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;margin-right:8px;">POST</span>/api/v3/consent/request</div>
                 <div class="hp-card-body">
-                    <p style="font-size:13px;color:#6c757d;">M1 — Submit the Aadhaar OTP and complete ABHA enrolment. Returns ABHA profile on success.</p>
-                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
-<span style="color:#6a9955;">// Request body &mdash; send plain OTP; gateway encrypts it</span><br>
+                    <p style="font-size:13px;color:#6c757d;">Request ABDM consent from patient. Patient approves via ABHA app.</p>
+                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;">
 {<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"txnId"</span>: <span style="color:#ce9178;">"&lt;txnId from generate-otp&gt;"</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"otp"</span>: <span style="color:#ce9178;">"123456"</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"mobile"</span>: <span style="color:#ce9178;">"9876543210"</span>&nbsp;&nbsp;<span style="color:#6a9955;">// optional</span><br>
-}<br><br>
-<span style="color:#6a9955;">// Success response</span><br>
-{ <span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>, <span style="color:#9cdcfe;">"data"</span>: { <span style="color:#9cdcfe;">"ABHAProfile"</span>: { <span style="color:#9cdcfe;">"ABHANumber"</span>: <span style="color:#ce9178;">"14-xxxx"</span> } } }
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"patient_abha"</span>: <span style="color:#ce9178;">"91-5101-6530-5101"</span>,<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"purpose"</span>: <span style="color:#ce9178;">"TREATMENT"</span>,<br>
+&nbsp;&nbsp;<span style="color:#9cdcfe;">"hi_types"</span>: [<span style="color:#ce9178;">"OPConsultation"</span>]<br>
+}
                     </div>
                 </div>
             </div>
@@ -320,66 +411,18 @@ curl <?= esc($baseUrl) ?>/api/v3/health<br><br>
         </div>
         <div class="col-md-6">
 
-            <!-- Mobile OTP -->
-            <div class="hp-card">
-                <div class="hp-card-head"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;margin-right:8px;">POST</span>/api/v3/abha/mobile/generate-otp</div>
-                <div class="hp-card-body">
-                    <p style="font-size:13px;color:#6c757d;">M1 — Send OTP to patient's mobile number for ABHA mobile linking flow.</p>
-                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
-<span style="color:#6a9955;">// Request body &mdash; send plain 10-digit mobile; gateway encrypts it</span><br>
-{<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"mobile"</span>: <span style="color:#ce9178;">"9999999999"</span><br>
-}<br><br>
-<span style="color:#6a9955;">// Response</span><br>
-{ <span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>, <span style="color:#9cdcfe;">"data"</span>: { <span style="color:#9cdcfe;">"txnId"</span>: <span style="color:#ce9178;">"..."</span> } }
-                    </div>
-                </div>
-            </div>
-
-            <!-- Mobile Verify OTP -->
-            <div class="hp-card">
-                <div class="hp-card-head"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;margin-right:8px;">POST</span>/api/v3/abha/mobile/verify-otp</div>
-                <div class="hp-card-body">
-                    <p style="font-size:13px;color:#6c757d;">M1 — Verify mobile OTP and complete ABHA link for the patient.</p>
-                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
-{<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"txnId"</span>: <span style="color:#ce9178;">"&lt;txnId from generate-otp&gt;"</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"otp"</span>: <span style="color:#ce9178;">"123456"</span><br>
-}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Consent Request -->
-            <div class="hp-card">
-                <div class="hp-card-head"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;margin-right:8px;">POST</span>/api/v3/consent/request</div>
-                <div class="hp-card-body">
-                    <p style="font-size:13px;color:#6c757d;">Initiate an ABDM consent request on behalf of the patient. Patient receives a notification in their ABHA app.</p>
-                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
-{<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"patient_abha"</span>: <span style="color:#ce9178;">"14-1234-5678-9012"</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"purpose"</span>: <span style="color:#ce9178;">"TREATMENT"</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"hi_types"</span>: [<span style="color:#ce9178;">"OPConsultation"</span>, <span style="color:#ce9178;">"DiagnosticReport"</span>]<br>
-}<br><br>
-<span style="color:#6a9955;">// Response</span><br>
-{ <span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>, <span style="color:#9cdcfe;">"consent_id"</span>: <span style="color:#ce9178;">"CONS-..."</span> }
-                    </div>
-                </div>
-            </div>
-
             <!-- Bundle Push -->
             <div class="hp-card">
                 <div class="hp-card-head"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;margin-right:8px;">POST</span>/api/v3/bundle/push</div>
                 <div class="hp-card-body">
-                    <p style="font-size:13px;color:#6c757d;">Push a FHIR R4 Bundle to ABDM. Requires a valid <code>consent_id</code> from a prior consent request.</p>
-                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
+                    <p style="font-size:13px;color:#6c757d;">Push FHIR R4 Bundle. Requires <code>consent_id</code> from consent request.</p>
+                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;">
 {<br>
 &nbsp;&nbsp;<span style="color:#9cdcfe;">"consent_id"</span>: <span style="color:#ce9178;">"CONS-20260515-abc123"</span>,<br>
 &nbsp;&nbsp;<span style="color:#9cdcfe;">"hi_type"</span>: <span style="color:#ce9178;">"OPConsultation"</span>,<br>
 &nbsp;&nbsp;<span style="color:#9cdcfe;">"fhir_bundle"</span>: { <span style="color:#6a9955;">/* FHIR R4 Bundle */</span> }<br>
-}<br><br>
-<span style="color:#6a9955;">// hi_type values:</span><br>
-<span style="color:#6a9955;">// OPConsultation | DiagnosticReport | DischargeSummary</span><br>
+}<br>
+<span style="color:#6a9955;">// hi_type: OPConsultation | DiagnosticReport | DischargeSummary</span><br>
 <span style="color:#6a9955;">// ImmunizationRecord | HealthDocumentRecord | Prescription</span>
                     </div>
                 </div>
@@ -389,16 +432,10 @@ curl <?= esc($baseUrl) ?>/api/v3/health<br><br>
             <div class="hp-card">
                 <div class="hp-card-head"><span style="background:#28a745;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;margin-right:8px;">GET</span>/api/v3/snomed/search</div>
                 <div class="hp-card-body">
-                    <p style="font-size:13px;color:#6c757d;">Search SNOMED CT clinical terms by keyword. Use for diagnosis/procedure code lookup in forms.</p>
-                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;overflow-x:auto;">
-GET /api/v3/snomed/search?term=fever&amp;return_limit=10<br><br>
-<span style="color:#6a9955;">// Response</span><br>
-{<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>,<br>
-&nbsp;&nbsp;<span style="color:#9cdcfe;">"data"</span>: [<br>
-&nbsp;&nbsp;&nbsp;&nbsp;{ <span style="color:#9cdcfe;">"code"</span>: <span style="color:#ce9178;">"386661006"</span>, <span style="color:#9cdcfe;">"term"</span>: <span style="color:#ce9178;">"Fever"</span> }<br>
-&nbsp;&nbsp;]<br>
-}
+                    <p style="font-size:13px;color:#6c757d;">Search SNOMED CT clinical terms for diagnosis/procedure codes.</p>
+                    <div style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;line-height:1.7;">
+GET /api/v3/snomed/search?term=fever<br><br>
+{ <span style="color:#9cdcfe;">"ok"</span>: <span style="color:#b5cea8;">1</span>, <span style="color:#9cdcfe;">"data"</span>: [{ <span style="color:#9cdcfe;">"code"</span>: <span style="color:#ce9178;">"386661006"</span>, <span style="color:#9cdcfe;">"term"</span>: <span style="color:#ce9178;">"Fever"</span> }] }
                     </div>
                 </div>
             </div>
@@ -406,7 +443,7 @@ GET /api/v3/snomed/search?term=fever&amp;return_limit=10<br><br>
         </div>
     </div>
 
-    <!-- Error Reference -->
+
     <div class="row">
         <div class="col-md-12">
             <div class="hp-card">
