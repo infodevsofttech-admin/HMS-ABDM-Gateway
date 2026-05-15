@@ -421,6 +421,11 @@ class Admin extends BaseController
             $xToken     = (string) ($decoded['tokens']['token'] ?? '');
             $enrolTxnId = (string) ($decoded['txnId'] ?? '');
 
+            // Download and store the official ABHA card PNG while the X-Token is fresh
+            if ($xToken !== '' && $profileId !== null) {
+                $this->tryStoreAbhaCard($xToken, $profileId);
+            }
+
             // In live mode, fetch ABHA address suggestions for step 3
             $suggestions = [];
             if ($enrolTxnId !== '' && !(bool) config('AbdmGateway')->testMode) {
@@ -775,12 +780,18 @@ class Admin extends BaseController
             // Save to patient master
             $profileData = !empty($profile) ? $profile : $decoded;
             $abhaNumber  = (string) ($profileData['ABHANumber'] ?? $profileData['abhaNumber'] ?? $loginId);
+            $profileId   = null;
             if (!empty($profileData)) {
                 try {
-                    $this->saveAbhaProfile($profileData, $abhaNumber, '');
+                    $profileId = $this->saveAbhaProfile($profileData, $abhaNumber, '');
                 } catch (\Throwable $ex) {
                     log_message('warning', 'Verify: profile save skipped: ' . $ex->getMessage());
                 }
+            }
+
+            // Store the official ABHA card PNG while the X-Token is still valid
+            if ($xToken !== '' && $profileId !== null) {
+                $this->tryStoreAbhaCard($xToken, $profileId);
             }
 
             return redirect()->to('/admin/m1/verify-flow')
@@ -833,12 +844,18 @@ class Admin extends BaseController
 
             $profileData = !empty($profile) ? $profile : $decoded;
             $abhaNum     = (string) ($profileData['ABHANumber'] ?? $profileData['abhaNumber'] ?? $abhaNumber);
+            $profileId   = null;
             if (!empty($profileData)) {
                 try {
-                    $this->saveAbhaProfile($profileData, $abhaNum, '');
+                    $profileId = $this->saveAbhaProfile($profileData, $abhaNum, '');
                 } catch (\Throwable $ex) {
                     log_message('warning', 'Verify user-select: profile save skipped: ' . $ex->getMessage());
                 }
+            }
+
+            // Store the official ABHA card PNG while the X-Token is still valid
+            if ($xToken !== '' && $profileId !== null) {
+                $this->tryStoreAbhaCard($xToken, $profileId);
             }
 
             return redirect()->to('/admin/m1/verify-flow')
@@ -1785,6 +1802,112 @@ class Admin extends BaseController
             'body'       => json_encode($data),
             'decoded'    => $data,
         ];
+    }
+
+    /**
+     * Download the official ABDM ABHA card PNG using the live X-Token and store
+     * the base64-encoded image inside the profile's profile_json['abha_card_base64'].
+     * Silently skipped in test mode or if the ABDM call fails.
+     */
+    private function tryStoreAbhaCard(string $xToken, int $profileId): void
+    {
+        if ((bool) config('AbdmGateway')->testMode || $xToken === '') {
+            return;
+        }
+        try {
+            $abdmToken = $this->fetchAbdmTokenForAdmin();
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => 'https://abhasbx.abdm.gov.in/abha/api/v3/profile/account/abha-card',
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 20,
+                CURLOPT_HEADER         => true,
+                CURLOPT_HTTPHEADER     => [
+                    'Accept: image/png, image/svg+xml, */*',
+                    'Authorization: Bearer ' . $abdmToken,
+                    'X-Token: Bearer ' . $xToken,
+                    'REQUEST-ID: ' . sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0x0fff)|0x4000, mt_rand(0,0x3fff)|0x8000, mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff)),
+                    'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $raw        = curl_exec($ch);
+            $httpCode   = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            curl_close($ch);
+
+            if ($raw === false || $httpCode >= 400) {
+                return;
+            }
+
+            $headers = substr((string) $raw, 0, $headerSize);
+            $body    = substr((string) $raw, $headerSize);
+
+            $contentType = 'image/png';
+            if (preg_match('/content-type:\s*([^\r\n]+)/i', $headers, $m)) {
+                $contentType = trim($m[1]);
+            }
+
+            if (str_contains($contentType, 'application/json') || str_contains($contentType, 'text/')) {
+                $decoded = json_decode($body, true);
+                if (!is_array($decoded)) {
+                    return;
+                }
+                $b64 = $decoded['image'] ?? $decoded['data'] ?? $decoded['abhaCard'] ?? null;
+                if ($b64 === null) {
+                    return;
+                }
+                $base64 = (string) $b64;
+            } else {
+                $base64 = base64_encode($body);
+            }
+
+            if ($base64 === '') {
+                return;
+            }
+
+            $existing = $this->abhaProfileModel->find($profileId);
+            if ($existing !== null) {
+                $pj = is_string($existing->profile_json ?? null)
+                    ? (json_decode($existing->profile_json, true) ?? [])
+                    : [];
+                $pj['abha_card_base64'] = $base64;
+                $this->abhaProfileModel->update($profileId, [
+                    'profile_json' => json_encode($pj, JSON_UNESCAPED_UNICODE),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            log_message('warning', 'tryStoreAbhaCard: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Serve the stored official ABHA card PNG (downloaded at creation/verify time)
+     * for a given ABHA number. Used by the admin patient list "View Card" modal.
+     */
+    public function m1PatientAbhaCard(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $abhaNumber = trim((string) $this->request->getGet('abha_number'));
+        if ($abhaNumber === '') {
+            return $this->response->setStatusCode(400)->setBody('Missing abha_number');
+        }
+
+        $row = $this->abhaProfileModel->where('abha_number', $abhaNumber)->first();
+        if ($row === null) {
+            return $this->response->setStatusCode(404)->setBody('Profile not found');
+        }
+
+        $pj     = is_string($row->profile_json ?? null) ? (json_decode($row->profile_json, true) ?? []) : [];
+        $base64 = $pj['abha_card_base64'] ?? null;
+
+        if (empty($base64)) {
+            return $this->response->setStatusCode(404)->setBody('Card not yet stored. Verify ABHA again to download the official card.');
+        }
+
+        return $this->response
+            ->setHeader('Content-Type', 'image/png')
+            ->setHeader('Cache-Control', 'private, max-age=3600')
+            ->setBody(base64_decode((string) $base64));
     }
 
     private function saveAbhaProfile(array $payload, string $fallbackAbhaId, string $requestId): int

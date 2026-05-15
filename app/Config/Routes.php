@@ -25,6 +25,7 @@ $routes->get('portal/opd-queue',       'Hospital::opdQueue',              ['filt
 $routes->post('portal/opd-queue/add',  'Hospital::opdQueueCreatePost',    ['filter' => 'auth']);
 $routes->post('portal/opd-queue/status','Hospital::opdQueueUpdateStatusPost',['filter' => 'auth']);
 $routes->get('portal/patients',        'Hospital::patients',              ['filter' => 'auth']);
+$routes->get('portal/patient-card',    'Hospital::patientAbhaCard',       ['filter' => 'auth']);
 $routes->get('portal/reports',         'Hospital::reports',               ['filter' => 'auth']);
 $routes->get('portal/api-docs',         'Hospital::apiDocs',               ['filter' => 'auth']);
 $routes->get('portal/profile',         'Hospital::profile',               ['filter' => 'auth']);
@@ -107,6 +108,7 @@ $routes->group('admin', ['filter' => 'auth'], static function($routes) {
         $routes->post('m1/verify-otp-confirm', 'Admin::m1VerifyOtpConfirmPost');
         $routes->post('m1/verify-user-select', 'Admin::m1VerifyUserSelectPost');
         $routes->get('m1/abha-card', 'Admin::m1AbhaCard');
+        $routes->get('m1/patient-card', 'Admin::m1PatientAbhaCard');
         $routes->get('m1/fetch-token', 'Admin::fetchAbdmToken');
         $routes->get('m1/scan-share', 'Admin::m1ScanShare');
         $routes->get('m1/scan-share-setup', 'Admin::m1ScanShareSetup');

@@ -804,5 +804,41 @@ class Hospital extends BaseController
         $allowed = '<p><br><b><strong><i><em><u><s><strike><ol><ul><li><h1><h2><h3><blockquote><pre><code><span><a>';
         return strip_tags($html, $allowed);
     }
+
+    // ─── Serve stored official ABHA card PNG ──────────────────────────────────
+
+    public function patientAbhaCard(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        if (!$this->guardHospital()) {
+            return $this->response->setStatusCode(403)->setBody('Unauthorised');
+        }
+
+        $hid        = (int) session()->get('hospital_id');
+        $abhaNumber = trim((string) $this->request->getGet('abha_number'));
+        if ($abhaNumber === '') {
+            return $this->response->setStatusCode(400)->setBody('Missing abha_number');
+        }
+
+        $profileModel = new AbdmAbhaProfile();
+        $row = $profileModel->where('abha_number', $abhaNumber)
+                            ->where('hospital_id', $hid)
+                            ->first();
+
+        if ($row === null) {
+            return $this->response->setStatusCode(404)->setBody('Profile not found');
+        }
+
+        $pj     = is_string($row->profile_json ?? null) ? (json_decode($row->profile_json, true) ?? []) : [];
+        $base64 = $pj['abha_card_base64'] ?? null;
+
+        if (empty($base64)) {
+            return $this->response->setStatusCode(404)->setBody('Card not yet stored. Verify ABHA again to download the official card.');
+        }
+
+        return $this->response
+            ->setHeader('Content-Type', 'image/png')
+            ->setHeader('Cache-Control', 'private, max-age=3600')
+            ->setBody(base64_decode((string) $base64));
+    }
 }
 

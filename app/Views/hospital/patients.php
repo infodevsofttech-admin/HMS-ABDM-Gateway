@@ -69,13 +69,14 @@ $search   = $search ?? '';
                 }
                 $photoB64    = $profileJson['photo'] ?? null;
                 $cardPayload = json_encode([
-                    'name'         => (string)($p->full_name ?? '—'),
-                    'abha_number'  => (string)($p->abha_number ?? ''),
-                    'abha_address' => (string)($p->abha_address ?? $p->phr_address ?? ''),
-                    'gender'       => (string)($p->gender ?? ''),
-                    'dob'          => (string)($p->date_of_birth ?? $p->year_of_birth ?? ''),
-                    'mobile'       => (string)($p->mobile ?? ''),
-                    'photo'        => $photoB64 ?? '',
+                    'name'             => (string)($p->full_name ?? '—'),
+                    'abha_number'      => (string)($p->abha_number ?? ''),
+                    'abha_address'     => (string)($p->abha_address ?? $p->phr_address ?? ''),
+                    'gender'           => (string)($p->gender ?? ''),
+                    'dob'              => (string)($p->date_of_birth ?? $p->year_of_birth ?? ''),
+                    'mobile'           => (string)($p->mobile ?? ''),
+                    'photo'            => $photoB64 ?? '',
+                    'abha_card_stored' => !empty($profileJson['abha_card_base64']),
                 ]);
             ?>
             <tr>
@@ -120,7 +121,12 @@ $search   = $search ?? '';
             <span style="color:#fff;font-weight:700;font-size:14px;"><i class="fas fa-id-card" style="margin-right:7px;"></i>ABHA Health Card</span>
             <button onclick="closeAbhaCard()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
         </div>
-        <!-- NHA Card -->
+        <!-- Official ABDM card (stored PNG from ABDM API) -->
+        <div id="abhaRealCard" style="display:none;padding:14px 16px 8px;text-align:center;">
+            <img id="abhaRealCardImg" src="" alt="ABHA Card" style="max-width:100%;border:1px solid #ccc;border-radius:4px;"
+                 onerror="document.getElementById('abhaRealCard').style.display='none';document.getElementById('abhaCardInner').style.display='block';">
+        </div>
+        <!-- Locally generated card (fallback when official PNG not stored) -->
         <div style="padding:14px 16px 8px;">
             <div id="abhaCardInner" style="border:1px solid #ccc;border-radius:4px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
                 <!-- Blue header bar -->
@@ -177,34 +183,50 @@ $search   = $search ?? '';
             </div>
         </div>
         <!-- Actions -->
-        <div style="padding:8px 16px 14px;display:flex;gap:10px;justify-content:flex-end;">
-            <button onclick="printAbhaCard()" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;"><i class="fas fa-print"></i> Print Card</button>
-            <button onclick="closeAbhaCard()" style="background:#f1f5f9;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer;">Close</button>
-        </div>
+        <div id="abhaCardActions" style="padding:8px 16px 14px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;"></div>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
+var _currentAbhaNum = '';
 function showAbhaCard(btn) {
     var p = JSON.parse(btn.getAttribute('data-profile'));
-    document.getElementById('cardName').textContent      = p.name || '—';
-    document.getElementById('cardAbha').textContent      = p.abha_address || '';
-    document.getElementById('cardAbhaLarge').textContent = formatAbhaNum(p.abha_number);
-    document.getElementById('cardGender').textContent    = genderLabel(p.gender);
-    document.getElementById('cardDob').textContent       = p.dob || '—';
-    document.getElementById('cardMobile').textContent    = p.mobile || '—';
-    var photoEl = document.getElementById('cardPhoto');
-    if (p.photo) {
-        photoEl.innerHTML = '<img src="data:image/jpeg;base64,' + p.photo + '" style="width:90px;height:108px;object-fit:cover;">';
+    _currentAbhaNum = p.abha_number || '';
+    var realCard  = document.getElementById('abhaRealCard');
+    var htmlCard  = document.getElementById('abhaCardInner');
+    var actions   = document.getElementById('abhaCardActions');
+    if (p.abha_card_stored && _currentAbhaNum) {
+        // Show official ABDM card PNG
+        realCard.style.display = 'block';
+        htmlCard.parentElement.style.display = 'none';
+        document.getElementById('abhaRealCardImg').src = '/portal/patient-card?abha_number=' + encodeURIComponent(_currentAbhaNum);
+        actions.innerHTML = '<a href="/portal/patient-card?abha_number=' + encodeURIComponent(_currentAbhaNum) + '" download="abha-card-' + _currentAbhaNum + '.png" style="background:#16a34a;color:#fff;text-decoration:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;display:inline-block;"><i class="fas fa-download"></i> Download Card</a>'
+            + '<button onclick="closeAbhaCard()" style="background:#f1f5f9;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer;">Close</button>';
     } else {
-        photoEl.innerHTML = '<span style="font-size:32px;">👤</span>';
-    }
-    var qrEl = document.getElementById('cardQr');
-    qrEl.innerHTML = '';
-    var qrText = p.abha_number || p.abha_address || '';
-    if (typeof QRCode !== 'undefined' && qrText) {
-        new QRCode(qrEl, { text: qrText, width: 110, height: 110, correctLevel: QRCode.CorrectLevel.M });
+        // Show locally generated card
+        realCard.style.display = 'none';
+        htmlCard.parentElement.style.display = 'block';
+        document.getElementById('cardName').textContent      = p.name || '—';
+        document.getElementById('cardAbha').textContent      = p.abha_address || '';
+        document.getElementById('cardAbhaLarge').textContent = formatAbhaNum(p.abha_number);
+        document.getElementById('cardGender').textContent    = genderLabel(p.gender);
+        document.getElementById('cardDob').textContent       = p.dob || '—';
+        document.getElementById('cardMobile').textContent    = p.mobile || '—';
+        var photoEl = document.getElementById('cardPhoto');
+        if (p.photo) {
+            photoEl.innerHTML = '<img src="data:image/jpeg;base64,' + p.photo + '" style="width:90px;height:108px;object-fit:cover;">';
+        } else {
+            photoEl.innerHTML = '<span style="font-size:32px;">👤</span>';
+        }
+        var qrEl = document.getElementById('cardQr');
+        qrEl.innerHTML = '';
+        var qrText = p.abha_number || p.abha_address || '';
+        if (typeof QRCode !== 'undefined' && qrText) {
+            new QRCode(qrEl, { text: qrText, width: 110, height: 110, correctLevel: QRCode.CorrectLevel.M });
+        }
+        actions.innerHTML = '<button onclick="printAbhaCard()" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;"><i class="fas fa-print"></i> Print Card</button>'
+            + '<button onclick="closeAbhaCard()" style="background:#f1f5f9;color:#374151;border:1px solid #d1d5db;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer;">Close</button>';
     }
     document.getElementById('abhaCardModal').style.display = 'flex';
 }
