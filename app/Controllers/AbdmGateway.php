@@ -207,27 +207,132 @@ class AbdmGateway extends BaseController
     }
 
     /**
-     * ABDM M1: Generate Aadhaar OTP for ABHA verification/creation flow.
+     * ABDM M1: Generate Aadhaar OTP for ABHA enrolment/linking.
      * POST /api/v3/abha/aadhaar/generate-otp
+     *
+     * HMS sends: { "aadhaar": "574287571374" }  (plain 12-digit number)
+     * Gateway encrypts with ABDM RSA public key before forwarding.
      */
     public function abhaAadhaarGenerateOtp()
     {
-        return $this->proxyM1Endpoint(
-            '/api/v3/abha/aadhaar/generate-otp',
-            config('AbdmGateway')->m1AadhaarGenerateOtpPath
-        );
+        $ep        = '/api/v3/abha/aadhaar/generate-otp';
+        $requestId = $this->generateRequestId();
+
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', $ep, 403, $authStatus, 'Invalid or missing bearer token');
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0, 'error' => 'Invalid authorization token', 'request_id' => $requestId,
+            ]);
+        }
+
+        $body         = json_decode((string) $this->request->getBody(), true) ?? [];
+        $plainAadhaar = trim((string) ($body['aadhaar'] ?? ''));
+
+        if (!preg_match('/^\d{12}$/', $plainAadhaar)) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0, 'error' => 'invalid_aadhaar',
+                'message' => 'Field "aadhaar" must be a 12-digit number.',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $mock = [
+                'ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'data' => ['txnId' => 'TEST-TXN-' . uniqid(), 'message' => 'Test mode: OTP would be sent to Aadhaar-linked mobile.'],
+            ];
+            $this->logTestSubmission($requestId, $ep, $body, $mock, 200, 'abdm.m1.aadhaar.generate-otp');
+            return $this->response->setJSON($mock);
+        }
+
+        $encAadhaar = $this->encryptAbdmData($plainAadhaar);
+        if ($encAadhaar === '') {
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0, 'error' => 'encryption_failed',
+                'message' => 'Could not encrypt Aadhaar — ABDM public key unavailable.',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        $abdmPayload = [
+            'txnId'     => '',
+            'scope'     => ['abha-enrol'],
+            'loginHint' => 'aadhaar',
+            'loginId'   => $encAadhaar,
+            'otpSystem' => 'aadhaar',
+        ];
+
+        return $this->sendM1Request($requestId, $ep, config('AbdmGateway')->m1AadhaarGenerateOtpPath, $abdmPayload);
     }
 
     /**
-     * ABDM M1: Verify Aadhaar OTP and continue ABHA flow.
+     * ABDM M1: Verify Aadhaar OTP and enrol/link ABHA.
      * POST /api/v3/abha/aadhaar/verify-otp
+     *
+     * HMS sends: { "txnId": "...", "otp": "123456", "mobile": "9999999999" }
+     * Gateway encrypts OTP with ABDM RSA public key before forwarding.
      */
     public function abhaAadhaarVerifyOtp()
     {
-        return $this->proxyM1Endpoint(
-            '/api/v3/abha/aadhaar/verify-otp',
-            config('AbdmGateway')->m1AadhaarVerifyOtpPath
-        );
+        $ep        = '/api/v3/abha/aadhaar/verify-otp';
+        $requestId = $this->generateRequestId();
+
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', $ep, 403, $authStatus, 'Invalid or missing bearer token');
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0, 'error' => 'Invalid authorization token', 'request_id' => $requestId,
+            ]);
+        }
+
+        $body   = json_decode((string) $this->request->getBody(), true) ?? [];
+        $txnId  = trim((string) ($body['txnId']  ?? ''));
+        $otp    = trim((string) ($body['otp']    ?? ''));
+        $mobile = trim((string) ($body['mobile'] ?? ''));
+
+        if ($txnId === '' || $otp === '') {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0, 'error' => 'missing_fields',
+                'message' => 'Fields "txnId" and "otp" are required.',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $mock = [
+                'ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'data' => ['message' => 'Test mode: ABHA would be enrolled/linked.', 'ABHAProfile' => ['ABHANumber' => '14-0000-0000-0000']],
+            ];
+            $this->logTestSubmission($requestId, $ep, $body, $mock, 200, 'abdm.m1.aadhaar.verify-otp');
+            return $this->response->setJSON($mock);
+        }
+
+        $encOtp = $this->encryptAbdmData($otp);
+        if ($encOtp === '') {
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0, 'error' => 'encryption_failed',
+                'message' => 'Could not encrypt OTP — ABDM public key unavailable.',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        $abdmPayload = [
+            'authData' => [
+                'authMethods' => ['otp'],
+                'otp' => [
+                    'txnId'    => $txnId,
+                    'otpValue' => $encOtp,
+                    'mobile'   => $mobile,
+                ],
+            ],
+            'consent' => [
+                'code'    => 'abha-enrollment',
+                'version' => '1.4',
+            ],
+        ];
+
+        return $this->sendM1Request($requestId, $ep, config('AbdmGateway')->m1AadhaarVerifyOtpPath, $abdmPayload);
     }
 
     /**
@@ -1194,6 +1299,117 @@ class AbdmGateway extends BaseController
 
         return (bool) config('AbdmGateway')->testMode;
     }
+
+    // ─── ABDM M1 RSA Encryption Helpers ─────────────────────────────────────
+
+    /** Runtime cache for ABDM M1 RSA public key. */
+    private ?string $abdmPublicKey = null;
+
+    /**
+     * Fetch (and cache for the request lifetime) ABDM's RSA public key
+     * from the certificate endpoint.
+     */
+    protected function getAbdmPublicKey(): string
+    {
+        if ($this->abdmPublicKey !== null) {
+            return $this->abdmPublicKey;
+        }
+
+        $certUrl = rtrim(config('AbdmGateway')->m1BaseUrl, '/') . '/abha/api/v3/profile/public/certificate';
+        $ch = curl_init($certUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+        ]);
+        $resp = curl_exec($ch);
+        curl_close($ch);
+
+        if (!$resp) {
+            return $this->abdmPublicKey = '';
+        }
+
+        $data = json_decode((string) $resp, true);
+        // ABDM returns: { "publicKey": "-----BEGIN PUBLIC KEY-----\n..." }
+        $this->abdmPublicKey = $data['publicKey'] ?? (string) $resp;
+        return $this->abdmPublicKey;
+    }
+
+    /**
+     * RSA-OAEP encrypt $plain using ABDM's public key.
+     * Returns base64-encoded ciphertext, or '' on failure.
+     */
+    protected function encryptAbdmData(string $plain): string
+    {
+        $publicKey = $this->getAbdmPublicKey();
+        if ($publicKey === '') {
+            return '';
+        }
+        $encrypted = '';
+        $ok = openssl_public_encrypt($plain, $encrypted, $publicKey, OPENSSL_PKCS1_OAEP_PADDING);
+        return $ok ? base64_encode($encrypted) : '';
+    }
+
+    /**
+     * Send a pre-built payload to an ABDM M1 upstream endpoint.
+     * Handles auth token, curl, logging, and response normalisation.
+     */
+    protected function sendM1Request(string $requestId, string $gatewayEndpoint, string $upstreamPath, array $body)
+    {
+        $this->bootRepositories();
+        $startTime = microtime(true);
+        try {
+            $abdmUrl   = rtrim(config('AbdmGateway')->m1BaseUrl, '/') . '/' . ltrim($upstreamPath, '/');
+            $abdmToken = $this->getAbdmAccessToken();
+
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $abdmUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => (int) config('AbdmGateway')->m3Timeout,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => json_encode($body),
+                CURLOPT_HTTPHEADER     => [
+                    'Authorization: Bearer ' . $abdmToken,
+                    'Content-Type: application/json',
+                    'Accept: application/json',
+                    'X-Client-ID: ' . config('AbdmGateway')->sourceCode,
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $rawResponse = curl_exec($ch);
+            $httpCode    = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError   = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlError) {
+                throw new \RuntimeException($curlError);
+            }
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $gatewayEndpoint, $httpCode, 'valid', null, $responseTime);
+
+            $decoded = json_decode((string) $rawResponse, true);
+            $payload = is_array($decoded) ? $decoded : ['raw_response' => trim((string) $rawResponse)];
+
+            return $this->response->setStatusCode($httpCode)->setJSON([
+                'ok'         => $httpCode >= 200 && $httpCode < 300 ? 1 : 0,
+                'data'       => $payload,
+                'request_id' => $requestId,
+            ]);
+        } catch (\Throwable $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $gatewayEndpoint, 500, 'valid', $e->getMessage(), $responseTime);
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok'         => 0,
+                'error'      => $e->getMessage(),
+                'request_id' => $requestId,
+            ]);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * Generic pass-through proxy for ABDM M1 endpoints.
