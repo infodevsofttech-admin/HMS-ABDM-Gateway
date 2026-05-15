@@ -1481,6 +1481,262 @@ class AbdmGateway extends BaseController
         ]);
     }
 
+    /**
+     * GET /api/v3/opd/running-token-status
+     * Returns the current running token number and average wait time for a HIP from ABDM.
+     *
+     * Query params:
+     *   hip_id   string  HIP ID to query (defaults to authenticated hospital's hfr_id)
+     *   context  string  Department/counter context (default "1")
+     */
+    public function opdRunningTokenStatus()
+    {
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(401)->setJSON(['ok' => 0, 'error' => 'unauthorized']);
+        }
+
+        $cfg     = config('AbdmGateway');
+        $hipId   = trim((string) ($this->request->getGet('hip_id') ?? ''));
+        $context = trim((string) ($this->request->getGet('context') ?? '1'));
+
+        // Resolve hip_id from authenticated hospital when not supplied
+        if ($hipId === '' && $this->authHospitalId) {
+            $hospital = (new AbdmHospital())->find($this->authHospitalId);
+            $hipId    = trim((string) (is_array($hospital) ? ($hospital['hfr_id'] ?? '') : ($hospital->hfr_id ?? '')));
+        }
+        if ($hipId === '') {
+            $hipId = trim((string) $cfg->hfrId);
+        }
+        if ($hipId === '') {
+            return $this->response->setStatusCode(400)->setJSON(['ok' => 0, 'error' => 'hip_id_required']);
+        }
+
+        if ($this->isTestMode()) {
+            return $this->response->setJSON([
+                'ok'                           => 1,
+                'test_mode'                    => true,
+                'hip_id'                       => $hipId,
+                'context'                      => $context,
+                'running_token_number'         => '10',
+                'average_service_time_minutes' => 3,
+            ]);
+        }
+
+        try {
+            $abdmToken = $this->getAbdmAccessToken();
+            $hfrId     = $cfg->hfrId ?: $hipId;
+
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => 'https://dev.abdm.gov.in/api/hiecm/patient-share/v3/running-token/status',
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 15,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => json_encode(['hipId' => $hipId, 'context' => $context]),
+                CURLOPT_HTTPHEADER     => [
+                    'Content-Type: application/json',
+                    'Accept: application/json',
+                    'Authorization: Bearer ' . $abdmToken,
+                    'REQUEST-ID: ' . $this->generateRequestId(),
+                    'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+                    'X-CM-ID: sbx',
+                    'X-HIU-ID: ' . $hfrId,
+                    'X-AUTH-TOKEN: ' . $abdmToken,
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $raw      = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            $decoded = json_decode((string) $raw, true);
+            if (!is_array($decoded)) {
+                $decoded = ['raw' => (string) $raw];
+            }
+
+            if ($httpCode >= 400) {
+                return $this->response->setStatusCode($httpCode)->setJSON(['ok' => 0, 'error' => 'abdm_error', 'details' => $decoded]);
+            }
+
+            $tokenData = is_array($decoded['token'] ?? null) ? $decoded['token'] : [];
+
+            return $this->response->setJSON([
+                'ok'                           => 1,
+                'hip_id'                       => $hipId,
+                'context'                      => $context,
+                'running_token_number'         => $tokenData['runningTokenNumber'] ?? null,
+                'average_service_time_minutes' => $tokenData['averageTokenServiceTimeInMinutes'] ?? null,
+                'raw'                          => $decoded,
+            ]);
+        } catch (\Throwable $e) {
+            log_message('error', 'opdRunningTokenStatus: ' . $e->getMessage());
+            return $this->response->setStatusCode(500)->setJSON(['ok' => 0, 'error' => $e->getMessage()]);
+        }
+    }
+
+    // ==================== Scan & Pay ====================
+
+    /**
+     * Authenticated proxy to ABDM scan-gateway endpoints.
+     * All Scan & Pay steps follow the same pattern: validate HMS auth, forward to ABDM, return response.
+     *
+     * @param string $path   Path under /api/hiecm/scan-gateway/v3/
+     * @param string $method HTTP method to use
+     */
+    private function scanGatewayCall(string $path, string $method = 'POST'): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(401)->setJSON(['ok' => 0, 'error' => 'unauthorized']);
+        }
+
+        if (!$this->authHospitalId) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => 0, 'error' => 'hospital_not_resolved']);
+        }
+
+        if ($this->isTestMode()) {
+            return $this->response->setJSON(['ok' => 1, 'test_mode' => true, 'path' => $path, 'method' => $method]);
+        }
+
+        try {
+            $cfg       = config('AbdmGateway');
+            $abdmToken = $this->getAbdmAccessToken();
+            $hfrId     = $cfg->hfrId;
+            $url       = 'https://dev.abdm.gov.in/api/hiecm/scan-gateway/v3/' . ltrim($path, '/');
+
+            $headers = [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Authorization: Bearer ' . $abdmToken,
+                'REQUEST-ID: ' . $this->generateRequestId(),
+                'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+                'X-CM-ID: sbx',
+                'X-HIP-ID: ' . $hfrId,
+            ];
+
+            $opts = [
+                CURLOPT_URL            => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 20,
+                CURLOPT_HTTPHEADER     => $headers,
+                CURLOPT_SSL_VERIFYPEER => false,
+            ];
+
+            if ($method === 'POST') {
+                $body = (array) ($this->request->getJSON(true) ?? []);
+                $opts[CURLOPT_POST]       = true;
+                $opts[CURLOPT_POSTFIELDS] = json_encode($body);
+            } elseif ($method === 'PATCH') {
+                $body = (array) ($this->request->getJSON(true) ?? []);
+                $opts[CURLOPT_CUSTOMREQUEST] = 'PATCH';
+                $opts[CURLOPT_POSTFIELDS]    = json_encode($body);
+            } elseif ($method === 'GET') {
+                $allowed = ['status', 'limit', 'startDate', 'endDate'];
+                $params  = [];
+                foreach ($allowed as $k) {
+                    $v = $this->request->getGet($k);
+                    if ($v !== null && $v !== '') {
+                        $params[$k] = $v;
+                    }
+                }
+                if ($params) {
+                    $opts[CURLOPT_URL] = $url . '?' . http_build_query($params);
+                }
+            }
+
+            $ch = curl_init();
+            curl_setopt_array($ch, $opts);
+            $raw      = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            $decoded = json_decode((string) $raw, true);
+            $payload = is_array($decoded) ? $decoded : ['raw' => (string) $raw];
+
+            if ($httpCode >= 400) {
+                return $this->response->setStatusCode($httpCode)
+                    ->setJSON(['ok' => 0, 'error' => 'abdm_error', 'http_code' => $httpCode, 'details' => $payload]);
+            }
+
+            return $this->response->setStatusCode($httpCode ?: 200)
+                ->setJSON(array_merge(['ok' => 1], $payload));
+
+        } catch (\Throwable $e) {
+            log_message('error', 'scanGatewayCall[' . $path . ']: ' . $e->getMessage());
+            return $this->response->setStatusCode(500)->setJSON(['ok' => 0, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * POST /api/v3/scan-pay/open-order
+     * Step 1: Hospital initiates a Scan & Pay order for a patient.
+     * Body: { intent, metadata: { hipId, counterId }, profile: { patient: {...} } }
+     */
+    public function scanPayOpenOrder()
+    {
+        return $this->scanGatewayCall('patient/share/open-order');
+    }
+
+    /**
+     * POST /api/v3/scan-pay/on-share-open-order
+     * Step 2: Hospital responds with the procedure/service list after patient profile received.
+     * Body: { intent, abhaAddress, patientUid, procedures: [...] }
+     */
+    public function scanPayOnShareOpenOrder()
+    {
+        return $this->scanGatewayCall('patient/on-share/open-order');
+    }
+
+    /**
+     * POST /api/v3/scan-pay/selection
+     * Step 3: Forward patient's service selection to ABDM.
+     * Body: { intent, openOrderRequestId, abhaAddress, procedures: [...] }
+     */
+    public function scanPaySelection()
+    {
+        return $this->scanGatewayCall('patient/selection');
+    }
+
+    /**
+     * POST /api/v3/scan-pay/on-selection
+     * Step 4: Hospital acknowledges the patient's selection.
+     */
+    public function scanPayOnSelection()
+    {
+        return $this->scanGatewayCall('patient/on-selection');
+    }
+
+    /**
+     * POST /api/v3/scan-pay/notify
+     * Step 5: Hospital sends payment notification to ABDM.
+     * Body: { intent, orderId, abhaAddress, payment: { ... } }
+     */
+    public function scanPayNotify()
+    {
+        return $this->scanGatewayCall('patient/scan-pay/notify');
+    }
+
+    /**
+     * POST /api/v3/scan-pay/order-status
+     * Step 6: Query the status of a Scan & Pay order.
+     * Body: { orderId }
+     */
+    public function scanPayOrderStatus()
+    {
+        return $this->scanGatewayCall('patient/scan-pay/order-status');
+    }
+
+    /**
+     * GET /api/v3/scan-pay/details
+     * Retrieve Scan & Pay transaction history.
+     * Query params: status, limit, startDate (ISO), endDate (ISO)
+     */
+    public function scanPayDetails()
+    {
+        return $this->scanGatewayCall('patient/scan-pay/details', 'GET');
+    }
+
     // ==================== Helper Methods ====================
 
     /**

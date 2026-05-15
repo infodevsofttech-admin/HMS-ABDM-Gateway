@@ -87,6 +87,18 @@ $routes->group('api/v3', static function($routes) {
 
     // Scan and Share — ABDM calls this when patient scans facility QR
     $routes->post('hip/patient/share', 'AbdmGateway::hipPatientShare');
+
+    // Running Token Status — query current OPD token being served at a HIP
+    $routes->get('opd/running-token-status', 'AbdmGateway::opdRunningTokenStatus');
+
+    // Scan & Pay — HMS-initiated payment order flow (proxied to ABDM scan-gateway)
+    $routes->post('scan-pay/open-order',          'AbdmGateway::scanPayOpenOrder');
+    $routes->post('scan-pay/on-share-open-order', 'AbdmGateway::scanPayOnShareOpenOrder');
+    $routes->post('scan-pay/selection',           'AbdmGateway::scanPaySelection');
+    $routes->post('scan-pay/on-selection',        'AbdmGateway::scanPayOnSelection');
+    $routes->post('scan-pay/notify',              'AbdmGateway::scanPayNotify');
+    $routes->post('scan-pay/order-status',        'AbdmGateway::scanPayOrderStatus');
+    $routes->get('scan-pay/details',              'AbdmGateway::scanPayDetails');
 });
 
 // ==================== Authentication Routes ====================
