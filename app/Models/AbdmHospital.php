@@ -14,6 +14,7 @@ class AbdmHospital extends Model
     protected $allowedFields = [
         'hospital_name',
         'hfr_id',
+        'facility_qr_data',
         'gateway_mode',
         'contact_name',
         'contact_email',

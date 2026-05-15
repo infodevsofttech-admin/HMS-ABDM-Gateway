@@ -27,6 +27,7 @@ $routes->post('portal/opd-queue/status','Hospital::opdQueueUpdateStatusPost',['f
 $routes->get('portal/patients',        'Hospital::patients',              ['filter' => 'auth']);
 $routes->get('portal/patient-card',    'Hospital::patientAbhaCard',       ['filter' => 'auth']);
 $routes->get('portal/facility-qr',    'Hospital::facilityQr',            ['filter' => 'auth']);
+$routes->post('portal/facility-qr/upload', 'Hospital::facilityQrUpload',  ['filter' => 'auth']);
 $routes->get('portal/reports',         'Hospital::reports',               ['filter' => 'auth']);
 $routes->get('portal/api-docs',         'Hospital::apiDocs',               ['filter' => 'auth']);
 $routes->get('portal/profile',         'Hospital::profile',               ['filter' => 'auth']);
@@ -115,6 +116,7 @@ $routes->group('admin', ['filter' => 'auth'], static function($routes) {
         $routes->get('m1/scan-share-setup', 'Admin::m1ScanShareSetup');
         $routes->post('m1/scan-share-setup', 'Admin::m1ScanShareSetupPost');
     $routes->get('facility-qr', 'Admin::facilityQr');
+    $routes->post('facility-qr/upload', 'Admin::facilityQrUpload');
     $routes->get('dashboard', 'Admin::dashboard');
     $routes->get('hospitals', 'Admin::hospitals');
     $routes->post('hospitals/create', 'Admin::createHospital');

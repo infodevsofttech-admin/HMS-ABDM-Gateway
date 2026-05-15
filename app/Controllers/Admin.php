@@ -2521,7 +2521,6 @@ class Admin extends BaseController
         if ($hospitalId > 0) {
             $hospital = $hospitalModel->find($hospitalId);
         } else {
-            // Default to first active hospital if no id given
             $hospital = $hospitalModel->where('is_active', 1)->first();
         }
 
@@ -2530,7 +2529,35 @@ class Admin extends BaseController
         return view('admin/facility_qr', [
             'hospital'  => $hospital,
             'hospitals' => $hospitals,
+            'message'   => session()->getFlashdata('message'),
+            'error'     => session()->getFlashdata('error'),
         ]);
     }
-}
 
+    public function facilityQrUpload()
+    {
+        $hospitalId = (int) $this->request->getPost('hospital_id');
+        $file       = $this->request->getFile('facility_qr');
+        $back       = '/admin/facility-qr' . ($hospitalId ? '?hospital_id=' . $hospitalId : '');
+
+        if (!$file || !$file->isValid() || $file->hasMoved()) {
+            return redirect()->to($back)->with('error', 'No file uploaded or invalid file.');
+        }
+
+        $mime = $file->getMimeType();
+        if (!in_array($mime, ['image/png', 'image/jpeg', 'image/gif', 'image/webp'], true)) {
+            return redirect()->to($back)->with('error', 'Only PNG/JPEG/GIF/WebP images are allowed.');
+        }
+
+        if ($file->getSize() > 2 * 1024 * 1024) {
+            return redirect()->to($back)->with('error', 'File too large. Max 2 MB.');
+        }
+
+        $base64 = base64_encode((string) file_get_contents($file->getTempName()));
+        $data   = 'data:' . $mime . ';base64,' . $base64;
+
+        (new AbdmHospital())->update($hospitalId, ['facility_qr_data' => $data]);
+
+        return redirect()->to($back)->with('message', 'Facility QR uploaded successfully.');
+    }
+}

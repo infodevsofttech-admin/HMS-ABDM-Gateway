@@ -817,7 +817,37 @@ class Hospital extends BaseController
 
         return view('hospital/facility_qr', [
             'hospital' => $hospital,
+            'message'  => session()->getFlashdata('message'),
+            'error'    => session()->getFlashdata('error'),
         ]);
+    }
+
+    public function facilityQrUpload()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid  = $this->hospitalId();
+        $file = $this->request->getFile('facility_qr');
+
+        if (!$file || !$file->isValid() || $file->hasMoved()) {
+            return redirect()->to('/portal/facility-qr')->with('error', 'No file uploaded or invalid file.');
+        }
+
+        $mime = $file->getMimeType();
+        if (!in_array($mime, ['image/png', 'image/jpeg', 'image/gif', 'image/webp'], true)) {
+            return redirect()->to('/portal/facility-qr')->with('error', 'Only PNG/JPEG/GIF/WebP images are allowed.');
+        }
+
+        if ($file->getSize() > 2 * 1024 * 1024) {
+            return redirect()->to('/portal/facility-qr')->with('error', 'File too large. Max 2 MB.');
+        }
+
+        $base64 = base64_encode((string) file_get_contents($file->getTempName()));
+        $data   = 'data:' . $mime . ';base64,' . $base64;
+
+        (new AbdmHospital())->update($hid, ['facility_qr_data' => $data]);
+
+        return redirect()->to('/portal/facility-qr')->with('message', 'Facility QR uploaded successfully.');
     }
 
     // ─── Serve stored official ABHA card PNG ──────────────────────────────────
