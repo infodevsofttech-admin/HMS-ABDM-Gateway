@@ -41,6 +41,11 @@ $routes->post('portal/tickets/(:num)/close','Hospital::ticketClosePost/$1',  ['f
 $routes->get('portal/tickets/attachment/(:num)', 'Hospital::ticketAttachmentDownload/$1', ['filter' => 'auth']);
 $routes->get('portal/logout',          'Hospital::logout');
 
+// HPR Professionals (hospital portal)
+$routes->get('portal/hpr-professionals',          'Hospital::hprProfessionals',          ['filter' => 'auth']);
+$routes->post('portal/hpr-professionals/create',  'Hospital::hprProfessionalCreate',     ['filter' => 'auth']);
+$routes->post('portal/hpr-professionals/(:num)/delete', 'Hospital::hprProfessionalDelete/$1', ['filter' => 'auth']);
+
 // Bridge ingress endpoint for HMS queue dispatch
 $routes->post('api/v1/bridge', 'AbdmGateway::bridgeDispatch');
 
@@ -158,6 +163,12 @@ $routes->group('admin', ['filter' => 'auth'], static function($routes) {
     $routes->get('registrations', 'Admin::hospitalRegistrations');
     $routes->post('registrations/(:num)/approve', 'Admin::hospitalRegistrationApprove/$1');
     $routes->post('registrations/(:num)/reject', 'Admin::hospitalRegistrationReject/$1');
+
+    // HPR Professionals
+    $routes->get('hpr-professionals', 'Admin::hprProfessionals');
+    $routes->post('hpr-professionals/create', 'Admin::hprProfessionalCreate');
+    $routes->post('hpr-professionals/(:num)/toggle', 'Admin::hprProfessionalToggle/$1');
+    $routes->post('hpr-professionals/(:num)/delete', 'Admin::hprProfessionalDelete/$1');
 
     // SMTP / App Settings
     $routes->get('settings/smtp', 'Admin::smtpSettings');

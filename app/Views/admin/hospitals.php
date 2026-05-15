@@ -70,6 +70,8 @@
                             <a href="/admin/hms-access?hospital_id=<?= esc((string) $hospital->id) ?>" style="color: #1d4ed8; text-decoration: none; font-size: 14px;">Configure →</a>
                             &nbsp;|&nbsp;
                             <a href="/admin/facility-qr?hospital_id=<?= esc((string) $hospital->id) ?>" style="color: #059669; text-decoration: none; font-size: 14px;"><i class="fa fa-qrcode"></i> QR</a>
+                            &nbsp;|&nbsp;
+                            <a href="/admin/hpr-professionals?hospital_id=<?= esc((string) $hospital->id) ?>" style="color: #7c3aed; text-decoration: none; font-size: 14px;"><i class="fa fa-user-md"></i> HPR</a>
                         </td>
                     </tr>
                 <?php endforeach; ?>

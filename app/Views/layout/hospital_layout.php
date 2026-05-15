@@ -211,6 +211,7 @@
         <li><a href="/portal/abha-tools" class="<?= str_contains(current_url(), 'abha-tools') ? 'active' : '' ?>"><i class="fas fa-id-card"></i> ABHA Tools</a></li>
         <li><a href="/portal/facility-qr" class="<?= str_contains(current_url(), 'facility-qr') ? 'active' : '' ?>"><i class="fas fa-qrcode"></i> Facility QR</a></li>
         <li><a href="/portal/opd-queue" class="<?= str_contains(current_url(), 'opd-queue') ? 'active' : '' ?>"><i class="fas fa-list-ol"></i> OPD Queue</a></li>
+        <li><a href="/portal/hpr-professionals" class="<?= str_contains(current_url(), 'hpr-professionals') ? 'active' : '' ?>"><i class="fas fa-user-md"></i> HPR Professionals</a></li>
         <li><a href="/portal/patients" class="<?= str_contains(current_url(), 'patients') ? 'active' : '' ?>"><i class="fas fa-user-injured"></i> Patients</a></li>
         <li><a href="/portal/reports" class="<?= str_contains(current_url(), 'reports') ? 'active' : '' ?>"><i class="fas fa-chart-bar"></i> Reports</a></li>
         <li><a href="/portal/profile" class="<?= str_contains(current_url(), 'profile') ? 'active' : '' ?>"><i class="fas fa-hospital"></i> Profile</a></li>
@@ -244,6 +245,7 @@
     <a href="/portal/abha-tools"><i class="fas fa-id-card"></i> ABHA Tools</a>
     <a href="/portal/facility-qr"><i class="fas fa-qrcode"></i> Facility QR</a>
     <a href="/portal/opd-queue"><i class="fas fa-list-ol"></i> OPD Queue</a>
+    <a href="/portal/hpr-professionals"><i class="fas fa-user-md"></i> HPR Professionals</a>
     <a href="/portal/patients"><i class="fas fa-user-injured"></i> Patients</a>
     <a href="/portal/reports"><i class="fas fa-chart-bar"></i> Reports</a>
     <a href="/portal/profile"><i class="fas fa-hospital"></i> Profile</a>

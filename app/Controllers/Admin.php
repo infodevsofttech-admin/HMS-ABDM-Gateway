@@ -2560,4 +2560,98 @@ class Admin extends BaseController
 
         return redirect()->to($back)->with('message', 'Facility QR uploaded successfully.');
     }
+
+    // ─── HPR Professionals ────────────────────────────────────────────────────
+
+    public function hprProfessionals()
+    {
+        $hospitalId = (int) $this->request->getGet('hospital_id');
+        $hospital   = null;
+        $professionals = [];
+
+        $hprModel = new \App\Models\HospitalHprProfessional();
+
+        if ($hospitalId > 0) {
+            $hospital      = $this->hospitalModel->find($hospitalId);
+            $professionals = $hprModel->forHospital($hospitalId);
+        }
+
+        return view('admin/hpr_professionals', [
+            'hospitals'     => $this->hospitalModel->where('is_active', 1)->orderBy('hospital_name', 'ASC')->findAll(),
+            'hospital'      => $hospital,
+            'professionals' => $professionals,
+            'hospitalId'    => $hospitalId,
+            'message'       => session()->getFlashdata('message'),
+            'error'         => session()->getFlashdata('error'),
+        ]);
+    }
+
+    public function hprProfessionalCreate()
+    {
+        $hospitalId          = (int) $this->request->getPost('hospital_id');
+        $name                = trim((string) $this->request->getPost('name'));
+        $hprId               = trim((string) $this->request->getPost('hpr_id'));
+        $designation         = trim((string) $this->request->getPost('designation'));
+        $specialization      = trim((string) $this->request->getPost('specialization'));
+        $department          = trim((string) $this->request->getPost('department'));
+        $registrationNumber  = trim((string) $this->request->getPost('registration_number'));
+        $back = '/admin/hpr-professionals?hospital_id=' . $hospitalId;
+
+        if ($hospitalId <= 0) {
+            return redirect()->to('/admin/hpr-professionals')->with('error', 'Please select a hospital.');
+        }
+        if ($name === '') {
+            return redirect()->to($back)->with('error', 'Professional name is required.');
+        }
+        if ($hprId === '') {
+            return redirect()->to($back)->with('error', 'HPR ID is required.');
+        }
+        if (!\App\Models\HospitalHprProfessional::validateHprId($hprId)) {
+            return redirect()->to($back)->with('error', 'Invalid HPR ID format. Expected: name@hpr.abdm or 14-digit number.');
+        }
+
+        $hprModel = new \App\Models\HospitalHprProfessional();
+        $existing = $hprModel->where('hospital_id', $hospitalId)->where('hpr_id', $hprId)->first();
+        if ($existing !== null) {
+            return redirect()->to($back)->with('error', 'This HPR ID is already registered for this hospital.');
+        }
+
+        $hprModel->insert([
+            'hospital_id'         => $hospitalId,
+            'name'                => $name,
+            'hpr_id'              => $hprId,
+            'designation'         => $designation ?: null,
+            'specialization'      => $specialization ?: null,
+            'department'          => $department ?: null,
+            'registration_number' => $registrationNumber ?: null,
+            'is_active'           => 1,
+        ]);
+
+        return redirect()->to($back)->with('message', 'HPR Professional "' . $name . '" added successfully.');
+    }
+
+    public function hprProfessionalToggle(int $id)
+    {
+        $hprModel = new \App\Models\HospitalHprProfessional();
+        $prof     = $hprModel->find($id);
+        if ($prof === null) {
+            return redirect()->back()->with('error', 'Professional not found.');
+        }
+        $hprModel->update($id, ['is_active' => $prof['is_active'] ? 0 : 1]);
+        $back = '/admin/hpr-professionals?hospital_id=' . $prof['hospital_id'];
+        return redirect()->to($back)->with('message', 'Status updated.');
+    }
+
+    public function hprProfessionalDelete(int $id)
+    {
+        $hprModel = new \App\Models\HospitalHprProfessional();
+        $prof     = $hprModel->find($id);
+        if ($prof === null) {
+            return redirect()->back()->with('error', 'Professional not found.');
+        }
+        $hospitalId = $prof['hospital_id'];
+        $hprModel->delete($id);
+        return redirect()->to('/admin/hpr-professionals?hospital_id=' . $hospitalId)
+            ->with('message', 'Professional removed.');
+    }
 }

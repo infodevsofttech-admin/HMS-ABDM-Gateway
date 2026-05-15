@@ -62,6 +62,9 @@
                         <li class="<?= str_contains(current_url(), '/admin/registrations') ? 'current-page active' : '' ?>">
                             <a href="/admin/registrations"><i class="fa fa-user-plus"></i> Registrations</a>
                         </li>
+                        <li class="<?= str_contains(current_url(), '/admin/hpr-professionals') ? 'current-page active' : '' ?>">
+                            <a href="/admin/hpr-professionals"><i class="fa fa-user-md"></i> HPR Professionals</a>
+                        </li>
                     </ul>
                 </div>
                 <div class="menu_section">
