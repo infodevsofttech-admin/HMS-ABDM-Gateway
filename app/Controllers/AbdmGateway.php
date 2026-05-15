@@ -1281,6 +1281,202 @@ class AbdmGateway extends BaseController
         ]);
     }
 
+    // ==================== OPD Queue API ====================
+
+    /**
+     * Fetch OPD token queue for the authenticated hospital.
+     * GET /api/v3/opd/queue
+     *
+     * Query params:
+     *   date   (Y-m-d, default: today)
+     *   status (PENDING|CALLED|COMPLETED|CANCELLED, default: all)
+     *   page   (int, default: 1)
+     *   limit  (int, 1-100, default: 50)
+     */
+    public function opdQueueList()
+    {
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(401)->setJSON(['ok' => 0, 'error' => 'unauthorized']);
+        }
+
+        $hospitalId = $this->authHospitalId;
+        if (!$hospitalId) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => 0, 'error' => 'hospital_not_resolved']);
+        }
+
+        $date   = trim((string) ($this->request->getGet('date')   ?: date('Y-m-d')));
+        $status = strtoupper(trim((string) ($this->request->getGet('status') ?? '')));
+        $limit  = max(1, min(100, (int) ($this->request->getGet('limit') ?: 50)));
+        $page   = max(1, (int) ($this->request->getGet('page') ?: 1));
+        $offset = ($page - 1) * $limit;
+
+        // Validate date format
+        if (!\DateTime::createFromFormat('Y-m-d', $date)) {
+            return $this->response->setStatusCode(400)->setJSON(['ok' => 0, 'error' => 'invalid_date_format', 'message' => 'Use Y-m-d format, e.g. 2026-05-16']);
+        }
+
+        $validStatuses = ['PENDING', 'CALLED', 'COMPLETED', 'CANCELLED'];
+
+        $tokenModel = new AbdmTokenQueue();
+        $builder = $tokenModel->where('hospital_id', $hospitalId)->where('token_date', $date);
+
+        if ($status !== '' && in_array($status, $validStatuses, true)) {
+            $builder = $builder->where('status', $status);
+        }
+
+        $total  = $builder->countAllResults(false);
+        $tokens = $builder->orderBy('token_number', 'ASC')->findAll($limit, $offset);
+
+        $counts = [];
+        foreach ($validStatuses as $s) {
+            $counts[strtolower($s)] = $tokenModel->where('hospital_id', $hospitalId)
+                ->where('token_date', $date)->where('status', $s)->countAllResults();
+        }
+
+        return $this->response->setJSON([
+            'ok'   => 1,
+            'date' => $date,
+            'pagination' => [
+                'total'  => $total,
+                'page'   => $page,
+                'limit'  => $limit,
+                'pages'  => (int) ceil($total / $limit),
+            ],
+            'summary' => $counts,
+            'tokens'  => array_map(static function (array $t): array {
+                return [
+                    'id'           => (int) $t['id'],
+                    'token_number' => (int) $t['token_number'],
+                    'patient_name' => $t['patient_name'] ?? '',
+                    'abha_number'  => $t['abha_number']  ?? null,
+                    'abha_address' => $t['abha_address'] ?? null,
+                    'gender'       => $t['gender']       ?? null,
+                    'dob'          => isset($t['day_of_birth'], $t['month_of_birth'], $t['year_of_birth'])
+                                      ? sprintf('%04d-%02d-%02d', $t['year_of_birth'], $t['month_of_birth'], $t['day_of_birth'])
+                                      : null,
+                    'phone'        => $t['phone']        ?? null,
+                    'department'   => $t['context']      ?? null,
+                    'status'       => $t['status']       ?? 'PENDING',
+                    'source'       => empty($t['abha_number']) ? 'manual' : 'scan_share',
+                    'created_at'   => $t['created_at']   ?? null,
+                    'updated_at'   => $t['updated_at']   ?? null,
+                ];
+            }, $tokens),
+        ]);
+    }
+
+    /**
+     * Add a manual OPD token (walk-in patient without ABHA scan).
+     * POST /api/v3/opd/token
+     *
+     * Body (JSON):
+     *   patient_name  string  required
+     *   phone         string  optional
+     *   abha_number   string  optional
+     *   gender        string  optional (M/F/O)
+     *   department    string  optional (default: General OPD)
+     *   date          string  optional (Y-m-d, default: today)
+     */
+    public function opdTokenCreate()
+    {
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(401)->setJSON(['ok' => 0, 'error' => 'unauthorized']);
+        }
+
+        $hospitalId = $this->authHospitalId;
+        if (!$hospitalId) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => 0, 'error' => 'hospital_not_resolved']);
+        }
+
+        $body = (array) ($this->request->getJSON(true) ?? []);
+        $patientName = trim((string) ($body['patient_name'] ?? ''));
+        if ($patientName === '') {
+            return $this->response->setStatusCode(400)->setJSON(['ok' => 0, 'error' => 'patient_name_required']);
+        }
+
+        $tokenDate = trim((string) ($body['date'] ?? date('Y-m-d')));
+        if (!\DateTime::createFromFormat('Y-m-d', $tokenDate)) {
+            return $this->response->setStatusCode(400)->setJSON(['ok' => 0, 'error' => 'invalid_date_format']);
+        }
+
+        $tokenModel  = new AbdmTokenQueue();
+        $tokenNumber = $tokenModel->where('hospital_id', $hospitalId)
+            ->where('token_date', $tokenDate)->countAllResults() + 1;
+
+        $id = $tokenModel->insert([
+            'hospital_id'  => $hospitalId,
+            'patient_name' => $patientName,
+            'phone'        => trim((string) ($body['phone']       ?? '')),
+            'abha_number'  => trim((string) ($body['abha_number'] ?? '')) ?: null,
+            'gender'       => trim((string) ($body['gender']      ?? '')) ?: null,
+            'context'      => trim((string) ($body['department']  ?? '')) ?: 'General OPD',
+            'token_number' => $tokenNumber,
+            'token_date'   => $tokenDate,
+            'status'       => 'PENDING',
+        ]);
+
+        $token = $tokenModel->find($id);
+
+        return $this->response->setStatusCode(201)->setJSON([
+            'ok'           => 1,
+            'token_number' => $tokenNumber,
+            'token_id'     => $id,
+            'patient_name' => $patientName,
+            'date'         => $tokenDate,
+            'status'       => 'PENDING',
+            'token'        => $token,
+        ]);
+    }
+
+    /**
+     * Update the status of an OPD token.
+     * PATCH /api/v3/opd/token/{id}
+     *
+     * Body (JSON):
+     *   status  string  required  (CALLED|COMPLETED|CANCELLED|PENDING)
+     */
+    public function opdTokenUpdateStatus(int $id)
+    {
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(401)->setJSON(['ok' => 0, 'error' => 'unauthorized']);
+        }
+
+        $hospitalId = $this->authHospitalId;
+        if (!$hospitalId) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => 0, 'error' => 'hospital_not_resolved']);
+        }
+
+        $body   = (array) ($this->request->getJSON(true) ?? []);
+        $status = strtoupper(trim((string) ($body['status'] ?? '')));
+
+        $allowed = ['PENDING', 'CALLED', 'COMPLETED', 'CANCELLED'];
+        if (!in_array($status, $allowed, true)) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0, 'error' => 'invalid_status',
+                'allowed' => $allowed,
+            ]);
+        }
+
+        $tokenModel = new AbdmTokenQueue();
+        $token = $tokenModel->where('id', $id)->where('hospital_id', $hospitalId)->first();
+        if ($token === null) {
+            return $this->response->setStatusCode(404)->setJSON(['ok' => 0, 'error' => 'token_not_found']);
+        }
+
+        $tokenModel->update($id, ['status' => $status]);
+
+        return $this->response->setJSON([
+            'ok'           => 1,
+            'token_id'     => $id,
+            'token_number' => (int) $token['token_number'],
+            'patient_name' => $token['patient_name'],
+            'status'       => $status,
+        ]);
+    }
+
     // ==================== Helper Methods ====================
 
     /**

@@ -75,6 +75,11 @@ $routes->group('api/v3', static function($routes) {
     // Gateway Status
     $routes->get('gateway/status', 'AbdmGateway::gatewayStatus');
 
+    // OPD Queue API (for HMS integration)
+    $routes->get('opd/queue',            'AbdmGateway::opdQueueList');
+    $routes->post('opd/token',           'AbdmGateway::opdTokenCreate');
+    $routes->patch('opd/token/(:num)',   'AbdmGateway::opdTokenUpdateStatus/$1');
+
     // Scan and Share — ABDM calls this when patient scans facility QR
     $routes->post('hip/patient/share', 'AbdmGateway::hipPatientShare');
 });
