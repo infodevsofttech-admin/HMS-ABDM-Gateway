@@ -246,11 +246,13 @@ class AbdmGateway extends BaseController
             return $this->response->setJSON($mock);
         }
 
-        $encAadhaar = $this->encryptAbdmData($plainAadhaar);
-        if ($encAadhaar === '') {
+        try {
+            $encAadhaar = $this->encryptAbdmData($plainAadhaar);
+        } catch (\Throwable $e) {
+            $this->logRequest($requestId, 'POST', $ep, 500, 'valid', $e->getMessage());
             return $this->response->setStatusCode(500)->setJSON([
                 'ok' => 0, 'error' => 'encryption_failed',
-                'message' => 'Could not encrypt Aadhaar — ABDM public key unavailable.',
+                'message' => $e->getMessage(),
                 'request_id' => $requestId,
             ]);
         }
@@ -308,11 +310,13 @@ class AbdmGateway extends BaseController
             return $this->response->setJSON($mock);
         }
 
-        $encOtp = $this->encryptAbdmData($otp);
-        if ($encOtp === '') {
+        try {
+            $encOtp = $this->encryptAbdmData($otp);
+        } catch (\Throwable $e) {
+            $this->logRequest($requestId, 'POST', $ep, 500, 'valid', $e->getMessage());
             return $this->response->setStatusCode(500)->setJSON([
                 'ok' => 0, 'error' => 'encryption_failed',
-                'message' => 'Could not encrypt OTP — ABDM public key unavailable.',
+                'message' => $e->getMessage(),
                 'request_id' => $requestId,
             ]);
         }
