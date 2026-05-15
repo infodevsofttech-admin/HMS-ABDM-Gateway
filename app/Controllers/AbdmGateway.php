@@ -342,27 +342,136 @@ class AbdmGateway extends BaseController
     }
 
     /**
-     * ABDM M1: Generate mobile OTP.
+     * ABDM M1: Generate mobile OTP for ABHA enrolment via mobile.
      * POST /api/v3/abha/mobile/generate-otp
+     *
+     * HMS sends: { "mobile": "9876543210" }
+     * Gateway encrypts mobile with ABDM RSA public key before forwarding.
      */
     public function abhaMobileGenerateOtp()
     {
-        return $this->proxyM1Endpoint(
-            '/api/v3/abha/mobile/generate-otp',
-            config('AbdmGateway')->m1MobileGenerateOtpPath
-        );
+        $ep        = '/api/v3/abha/mobile/generate-otp';
+        $requestId = $this->generateRequestId();
+
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', $ep, 403, $authStatus, 'Invalid or missing bearer token');
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0, 'error' => 'Invalid authorization token', 'request_id' => $requestId,
+            ]);
+        }
+
+        $body        = json_decode((string) $this->request->getBody(), true) ?? [];
+        $plainMobile = trim((string) ($body['mobile'] ?? $body['mobileNumber'] ?? $body['mobile_number'] ?? ''));
+
+        if (!preg_match('/^\d{10}$/', $plainMobile)) {
+            $this->logRequest($requestId, 'POST', $ep, 400, 'valid', 'invalid_mobile: must be 10 digits');
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0, 'error' => 'invalid_mobile',
+                'message' => 'Field "mobile" must be a 10-digit mobile number.',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $mock = [
+                'ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'data' => ['txnId' => 'TEST-TXN-' . uniqid(), 'message' => 'Test mode: OTP would be sent to mobile.'],
+            ];
+            $this->logTestSubmission($requestId, $ep, $body, $mock, 200, 'abdm.m1.mobile.generate-otp');
+            return $this->response->setJSON($mock);
+        }
+
+        try {
+            $encMobile = $this->encryptAbdmData($plainMobile);
+        } catch (\Throwable $e) {
+            $this->logRequest($requestId, 'POST', $ep, 500, 'valid', $e->getMessage());
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0, 'error' => 'encryption_failed',
+                'message' => $e->getMessage(),
+                'request_id' => $requestId,
+            ]);
+        }
+
+        $abdmPayload = [
+            'scope'     => ['abha-enrol', 'mobile-verify'],
+            'loginHint' => 'mobile',
+            'loginId'   => $encMobile,
+            'otpSystem' => 'abdm',
+        ];
+
+        return $this->sendM1Request($requestId, $ep, config('AbdmGateway')->m1MobileGenerateOtpPath, $abdmPayload);
     }
 
     /**
-     * ABDM M1: Verify mobile OTP.
+     * ABDM M1: Verify mobile OTP and enrol/link ABHA via mobile.
      * POST /api/v3/abha/mobile/verify-otp
+     *
+     * HMS sends: { "txnId": "...", "otp": "123456" }
+     * Gateway encrypts OTP with ABDM RSA public key before forwarding.
      */
     public function abhaMobileVerifyOtp()
     {
-        return $this->proxyM1Endpoint(
-            '/api/v3/abha/mobile/verify-otp',
-            config('AbdmGateway')->m1MobileVerifyOtpPath
-        );
+        $ep        = '/api/v3/abha/mobile/verify-otp';
+        $requestId = $this->generateRequestId();
+
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', $ep, 403, $authStatus, 'Invalid or missing bearer token');
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0, 'error' => 'Invalid authorization token', 'request_id' => $requestId,
+            ]);
+        }
+
+        $body  = json_decode((string) $this->request->getBody(), true) ?? [];
+        $txnId = trim((string) ($body['txnId']  ?? $body['transactionId'] ?? $body['transaction_id'] ?? ''));
+        $otp   = trim((string) ($body['otp']    ?? $body['otpValue']      ?? $body['otp_value']      ?? ''));
+
+        if ($txnId === '' || $otp === '') {
+            $this->logRequest($requestId, 'POST', $ep, 400, 'valid', 'missing_fields: txnId or otp empty');
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0, 'error' => 'missing_fields',
+                'message' => 'Required fields: txnId (or transactionId) and otp (or otpValue).',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $mock = [
+                'ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'data' => [
+                    'message' => 'Test mode: ABHA would be enrolled/linked via mobile.',
+                    'enrolProfile' => ['enrolmentNumber' => '91-0000-0000-0000', 'enrolmentState' => 'PROVISIONAL'],
+                ],
+            ];
+            $this->logTestSubmission($requestId, $ep, $body, $mock, 200, 'abdm.m1.mobile.verify-otp');
+            return $this->response->setJSON($mock);
+        }
+
+        try {
+            $encOtp = $this->encryptAbdmData($otp);
+        } catch (\Throwable $e) {
+            $this->logRequest($requestId, 'POST', $ep, 500, 'valid', $e->getMessage());
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0, 'error' => 'encryption_failed',
+                'message' => $e->getMessage(),
+                'request_id' => $requestId,
+            ]);
+        }
+
+        $abdmPayload = [
+            'scope'    => ['abha-enrol', 'mobile-verify'],
+            'authData' => [
+                'authMethods' => ['otp'],
+                'otp' => [
+                    'timeStamp' => gmdate('Y-m-d\TH:i:s.000\Z'),
+                    'txnId'     => $txnId,
+                    'otpValue'  => $encOtp,
+                ],
+            ],
+        ];
+
+        return $this->sendM1Request($requestId, $ep, config('AbdmGateway')->m1MobileVerifyOtpPath, $abdmPayload);
     }
 
     /**
