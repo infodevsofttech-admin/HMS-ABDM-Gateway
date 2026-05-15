@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Models\AbdmHospital;
 use App\Models\AbdmAbhaProfile;
 use App\Models\AbdmTokenQueue;
+use App\Models\HmsCredential;
 use App\Models\SupportTicket;
 use App\Models\SupportMessage;
 use App\Models\SupportAttachment;
@@ -323,10 +324,33 @@ class Hospital extends BaseController
     {
         if (!$this->guardHospital()) return $this->redirectUnauth();
 
+        $hid           = $this->hospitalId();
         $hospitalModel = new AbdmHospital();
-        $hospital      = $hospitalModel->find($this->hospitalId());
+        $hospital      = $hospitalModel->find($hid);
 
-        return view('hospital/profile', ['hospital' => $hospital]);
+        $credModel  = new HmsCredential();
+        $credential = $credModel->getActiveByHospital($hid);
+
+        $masked_key   = '';
+        $api_endpoint = 'https://abdm-bridge.e-atria.in/api';
+        if ($credential !== null && !empty($credential->hms_api_key)) {
+            $plain = $this->decryptCredential($credential->hms_api_key);
+            if (strlen($plain) >= 12) {
+                $masked_key = substr($plain, 0, 6) . str_repeat('*', 16) . substr($plain, -4);
+            } else {
+                $masked_key = str_repeat('*', strlen($plain));
+            }
+            if (!empty($credential->hms_api_endpoint)) {
+                $api_endpoint = $credential->hms_api_endpoint;
+            }
+        }
+
+        return view('hospital/profile', [
+            'hospital'     => $hospital,
+            'credential'   => $credential,
+            'masked_key'   => $masked_key,
+            'api_endpoint' => $api_endpoint,
+        ]);
     }
 
     public function changePasswordPost()
@@ -365,6 +389,14 @@ class Hospital extends BaseController
     {
         session()->destroy();
         return redirect()->to('/')->with('message', 'Logged out successfully.');
+    }
+
+    // ─── Private Helpers ─────────────────────────────────────────────────────
+
+    private function decryptCredential(string $data): string
+    {
+        $parts = explode(':', base64_decode($data));
+        return $parts[0] ?? '';
     }
 
     // ─── Private Helpers ─────────────────────────────────────────────────────

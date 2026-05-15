@@ -133,6 +133,69 @@ $createdAt= is_object($hospital) ? ($hospital->created_at ?? '—') : (is_array(
     <div class="row" style="margin-top:4px;">
         <div class="col-md-6">
             <div class="hp-card">
+                <div class="hp-card-head"><i class="fas fa-plug"></i> HMS API Configuration</div>
+                <div class="hp-card-body" style="padding:0;">
+                    <?php if (!empty($credential)): ?>
+                    <table class="hp-tbl">
+                        <tbody>
+                        <tr>
+                            <td style="font-weight:600;color:#495057;width:38%;padding:12px 18px;">HMS Name</td>
+                            <td style="padding:12px 18px;"><?= esc((string)($credential->hms_name ?? '—')) ?></td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight:600;color:#495057;padding:12px 18px;">Gateway URL</td>
+                            <td style="padding:12px 18px;font-family:monospace;font-size:12px;word-break:break-all;">
+                                <?= esc((string)$api_endpoint) ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight:600;color:#495057;padding:12px 18px;">API Key</td>
+                            <td style="padding:12px 18px;">
+                                <?php if (!empty($masked_key)): ?>
+                                    <code style="font-size:12px;letter-spacing:1px;background:#f0f4f8;padding:3px 8px;border-radius:4px;"><?= esc($masked_key) ?></code>
+                                    <div style="font-size:11px;color:#6c757d;margin-top:4px;">Contact admin to regenerate or receive key by email.</div>
+                                <?php else: ?>
+                                    <span class="text-muted" style="font-size:13px;">Not configured yet</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight:600;color:#495057;padding:12px 18px;">Auth Header</td>
+                            <td style="padding:12px 18px;font-family:monospace;font-size:12px;">
+                                Authorization: Bearer &lt;api-key&gt;
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight:600;color:#495057;padding:12px 18px;">HFR ID</td>
+                            <td style="padding:12px 18px;font-family:monospace;font-size:13px;">
+                                <?= esc((string)$hfrId) ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight:600;color:#495057;padding:12px 18px;">Status</td>
+                            <td style="padding:12px 18px;">
+                                <span class="hb hb-<?= ($credential->is_active ?? 0) ? 'green' : 'red' ?>">
+                                    <?= ($credential->is_active ?? 0) ? 'ACTIVE' : 'INACTIVE' ?>
+                                </span>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                    <?php else: ?>
+                    <div style="padding:20px 18px;color:#6c757d;font-size:13px;">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        No HMS API credential configured yet. Please contact your system administrator.
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password -->
+    <div class="row" style="margin-top:4px;">
+        <div class="col-md-6">
+            <div class="hp-card">
                 <div class="hp-card-head"><i class="fas fa-key"></i> Change Password</div>
                 <div class="hp-card-body">
                     <?php if (session()->getFlashdata('pw_error')): ?>
