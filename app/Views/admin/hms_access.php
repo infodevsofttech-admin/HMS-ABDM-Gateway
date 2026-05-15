@@ -33,10 +33,24 @@
             <div class="x_content">
                 <form method="post" action="/admin/hms-credential/create" class="form-horizontal">
                     <?= csrf_field() ?>
-                    <div class="row">
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label class="control-label">Hospital</label>
+                    <input type="hidden" name="hms_auth_type" value="api_key">
+
+                    <?php if (!empty($selectedHospital)): ?>
+                        <!-- Hospital locked from Hospital List -->
+                        <input type="hidden" name="hospital_id" value="<?= esc((string) $selectedHospital->id) ?>">
+                        <div class="form-group">
+                            <label class="col-sm-2 control-label">Hospital</label>
+                            <div class="col-sm-10">
+                                <p class="form-control-static">
+                                    <strong><?= esc((string) $selectedHospital->hospital_name) ?></strong>
+                                    <span class="text-muted">(<?= esc((string) $selectedHospital->hfr_id) ?>)</span>
+                                </p>
+                            </div>
+                        </div>
+                    <?php else: ?>
+                        <div class="form-group">
+                            <label class="col-sm-2 control-label">Hospital</label>
+                            <div class="col-sm-4">
                                 <select name="hospital_id" class="form-control" required>
                                     <option value="">-- Select Hospital --</option>
                                     <?php foreach ($hospitals as $hospital): ?>
@@ -47,54 +61,38 @@
                                 </select>
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label class="control-label">HMS System Name</label>
-                                <input type="text" name="hms_name" class="form-control" placeholder="e.g. Meddata HMS, Athenahealth" required>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                <label class="control-label">API Endpoint</label>
-                                <input type="text" name="hms_api_endpoint" class="form-control" placeholder="https://hms.example.com/api" required>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="form-group">
-                                <label class="control-label">Auth Type</label>
-                                <select name="hms_auth_type" id="authType" class="form-control" required onchange="toggleAuthFields()">
-                                    <option value="api_key">API Key</option>
-                                    <option value="basic">Basic Auth</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="apiKeyFields" class="row">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label class="control-label">API Key</label>
-                                <input type="password" name="hms_api_key" id="apiKeyInput" class="form-control" placeholder="API Key">
-                            </div>
-                        </div>
-                    </div>
-                    <div id="basicAuthFields" class="row" style="display:none;">
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label class="control-label">Username</label>
-                                <input type="text" name="hms_username" id="basicUsername" class="form-control" placeholder="Username">
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label class="control-label">Password</label>
-                                <input type="password" name="hms_password" id="basicPassword" class="form-control" placeholder="Password">
-                            </div>
-                        </div>
-                    </div>
+                    <?php endif; ?>
+
                     <div class="form-group">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fa fa-save"></i> Add HMS Credential
-                        </button>
+                        <label class="col-sm-2 control-label">HMS System Name <small class="text-muted">(optional)</small></label>
+                        <div class="col-sm-4">
+                            <input type="text" name="hms_name" class="form-control" placeholder="e.g. Meddata HMS (auto-filled if blank)">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="col-sm-2 control-label">API Endpoint</label>
+                        <div class="col-sm-6">
+                            <input type="text" name="hms_api_endpoint" class="form-control"
+                                   value="https://abdm-bridge.e-atria.in/api" required>
+                            <p class="help-block"><i class="fa fa-info-circle"></i> Default gateway endpoint — change only if this hospital uses a different URL.</p>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="col-sm-2 control-label">API Key</label>
+                        <div class="col-sm-6">
+                            <input type="password" name="hms_api_key" class="form-control" placeholder="Enter API Key" required>
+                            <p class="help-block"><i class="fa fa-lock"></i> Stored encrypted. Auth method: <strong>API Key</strong> (recommended for gateway APIs).</p>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="col-sm-offset-2 col-sm-10">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fa fa-save"></i> Add HMS Credential
+                            </button>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -171,14 +169,4 @@
     </div>
 </div>
 
-<?= $this->endSection() ?>
-
-<?= $this->section('scripts') ?>
-<script>
-    function toggleAuthFields() {
-        var authType = document.getElementById('authType').value;
-        document.getElementById('apiKeyFields').style.display = authType === 'api_key' ? 'block' : 'none';
-        document.getElementById('basicAuthFields').style.display = authType === 'basic' ? 'block' : 'none';
-    }
-</script>
 <?= $this->endSection() ?>

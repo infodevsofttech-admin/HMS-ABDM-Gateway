@@ -1039,8 +1039,15 @@ class Admin extends BaseController
 
     public function hmsAccess()
     {
+        $selectedHospitalId = (int) $this->request->getGet('hospital_id');
+        $selectedHospital = null;
+        if ($selectedHospitalId > 0) {
+            $selectedHospital = $this->hospitalModel->find($selectedHospitalId);
+        }
+
         $data = [
             'hospitals' => $this->hospitalModel->where('is_active', 1)->orderBy('hospital_name', 'ASC')->findAll(),
+            'selectedHospital' => $selectedHospital,
             'credentials' => $this->hmsCredentialModel
                 ->select('hms_credentials.*, abdm_hospitals.hospital_name, abdm_hospitals.hfr_id')
                 ->join('abdm_hospitals', 'abdm_hospitals.id = hms_credentials.hospital_id', 'left')
@@ -1077,10 +1084,10 @@ class Admin extends BaseController
         $hospitalId = (int) $this->request->getPost('hospital_id');
         $hmsName = trim((string) $this->request->getPost('hms_name'));
         $hmsEndpoint = trim((string) $this->request->getPost('hms_api_endpoint'));
-        $hmsAuthType = strtolower(trim((string) $this->request->getPost('hms_auth_type')));
+        $hmsAuthType = 'api_key';
 
-        if ($hospitalId <= 0 || $hmsName === '' || $hmsEndpoint === '') {
-            return redirect()->to('/admin/hms-access')->with('error', 'Hospital, HMS name, and API endpoint are required.');
+        if ($hospitalId <= 0 || $hmsEndpoint === '') {
+            return redirect()->to('/admin/hms-access')->with('error', 'Hospital and API endpoint are required.');
         }
 
         $hospital = $this->hospitalModel->find($hospitalId);
@@ -1088,8 +1095,9 @@ class Admin extends BaseController
             return redirect()->to('/admin/hms-access')->with('error', 'Hospital not found.');
         }
 
-        if (!in_array($hmsAuthType, ['api_key', 'basic'], true)) {
-            $hmsAuthType = 'api_key';
+        // Use hospital name as HMS name fallback if not provided
+        if ($hmsName === '') {
+            $hmsName = $hospital->hospital_name . ' HMS';
         }
 
         $insertData = [
@@ -1100,21 +1108,11 @@ class Admin extends BaseController
             'is_active' => 1,
         ];
 
-        if ($hmsAuthType === 'api_key') {
-            $hmsApiKey = trim((string) $this->request->getPost('hms_api_key'));
-            if ($hmsApiKey === '') {
-                return redirect()->to('/admin/hms-access')->with('error', 'API key is required for api_key auth type.');
-            }
-            $insertData['hms_api_key'] = $this->encryptCredential($hmsApiKey);
-        } elseif ($hmsAuthType === 'basic') {
-            $hmsUsername = trim((string) $this->request->getPost('hms_username'));
-            $hmsPassword = trim((string) $this->request->getPost('hms_password'));
-            if ($hmsUsername === '' || $hmsPassword === '') {
-                return redirect()->to('/admin/hms-access')->with('error', 'Username and password are required for basic auth type.');
-            }
-            $insertData['hms_username'] = $hmsUsername;
-            $insertData['hms_password'] = $this->encryptCredential($hmsPassword);
+        $hmsApiKey = trim((string) $this->request->getPost('hms_api_key'));
+        if ($hmsApiKey === '') {
+            return redirect()->to('/admin/hms-access')->with('error', 'API key is required.');
         }
+        $insertData['hms_api_key'] = $this->encryptCredential($hmsApiKey);
 
         $this->hmsCredentialModel->insert($insertData);
 

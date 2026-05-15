@@ -67,7 +67,7 @@
                             <?php endif; ?>
                         </td>
                         <td style="border: 1px solid #e5e7eb; padding: 12px;">
-                            <a href="/admin/hms-access" style="color: #1d4ed8; text-decoration: none; font-size: 14px;">Configure →</a>
+                            <a href="/admin/hms-access?hospital_id=<?= esc((string) $hospital->id) ?>" style="color: #1d4ed8; text-decoration: none; font-size: 14px;">Configure →</a>
                         </td>
                     </tr>
                 <?php endforeach; ?>
