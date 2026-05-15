@@ -470,7 +470,94 @@ class AbdmGateway extends BaseController
             ],
         ];
 
-        return $this->sendM1Request($requestId, $ep, config('AbdmGateway')->m1MobileVerifyOtpPath, $abdmPayload);
+        // Step 1: Verify OTP
+        $this->bootRepositories();
+        $startTime = microtime(true);
+        try {
+            $cfg       = config('AbdmGateway');
+            $abdmToken = $this->getAbdmAccessToken();
+            $verifyUrl = rtrim($cfg->m1BaseUrl, '/') . '/' . ltrim($cfg->m1MobileVerifyOtpPath, '/');
+
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $verifyUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => (int) $cfg->m3Timeout,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => json_encode($abdmPayload),
+                CURLOPT_HTTPHEADER     => [
+                    'Authorization: Bearer ' . $abdmToken,
+                    'Content-Type: application/json',
+                    'Accept: application/json',
+                    'X-Client-ID: '   . $cfg->sourceCode,
+                    'REQUEST-ID: '    . $this->generateAbdmRequestId(),
+                    'TIMESTAMP: '     . gmdate('Y-m-d\TH:i:s.000\Z'),
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $rawVerify  = curl_exec($ch);
+            $httpCode   = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError  = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlError) {
+                throw new \RuntimeException($curlError);
+            }
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $ep, $httpCode, 'valid', null, $responseTime, $rawVerify);
+
+            $verifyData = json_decode((string) $rawVerify, true);
+            if (!is_array($verifyData)) {
+                $verifyData = ['raw_response' => trim((string) $rawVerify)];
+            }
+
+            if ($httpCode < 200 || $httpCode >= 300) {
+                return $this->response->setStatusCode($httpCode)->setJSON([
+                    'ok' => 0, 'data' => $verifyData, 'request_id' => $requestId,
+                ]);
+            }
+
+            // Step 2: Fetch ABHA profile using the transfer token
+            $xToken = $verifyData['token'] ?? null;
+            if ($xToken) {
+                $profileUrl = rtrim($cfg->m1BaseUrl, '/') . '/abha/api/v3/profile/account';
+                $ch2 = curl_init();
+                curl_setopt_array($ch2, [
+                    CURLOPT_URL            => $profileUrl,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => (int) $cfg->m3Timeout,
+                    CURLOPT_HTTPHEADER     => [
+                        'Authorization: Bearer ' . $abdmToken,
+                        'X-token: Bearer ' . $xToken,
+                        'Accept: application/json',
+                        'X-Client-ID: '   . $cfg->sourceCode,
+                        'REQUEST-ID: '    . $this->generateAbdmRequestId(),
+                        'TIMESTAMP: '     . gmdate('Y-m-d\TH:i:s.000\Z'),
+                    ],
+                    CURLOPT_SSL_VERIFYPEER => false,
+                ]);
+                $rawProfile  = curl_exec($ch2);
+                $profileCode = (int) curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+                curl_close($ch2);
+
+                $profileData = json_decode((string) $rawProfile, true);
+                if (is_array($profileData)) {
+                    $verifyData['profile'] = $profileData;
+                }
+            }
+
+            return $this->response->setStatusCode(200)->setJSON([
+                'ok' => 1, 'data' => $verifyData, 'request_id' => $requestId,
+            ]);
+
+        } catch (\Throwable $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $ep, 500, 'valid', $e->getMessage(), $responseTime);
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0, 'error' => $e->getMessage(), 'request_id' => $requestId,
+            ]);
+        }
     }
 
     /**
