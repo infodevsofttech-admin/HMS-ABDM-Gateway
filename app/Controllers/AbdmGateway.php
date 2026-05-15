@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Models\AbdmHospital;
 use App\Models\AbdmRequestLog;
 use App\Models\AbdmAuditTrail;
 use App\Models\AbdmBundle;
@@ -1119,11 +1120,16 @@ class AbdmGateway extends BaseController
         $yearOfBirth  = (string) ($patient['yearOfBirth']  ?? '');
 
         try {
+            // Resolve hospital_id from hipId (hfr_id) so token appears in the right hospital's OPD queue
+            $hospitalRow = (new AbdmHospital())->where('hfr_id', $hipId)->first();
+            $hospitalId  = $hospitalRow ? (int) $hospitalRow->id : null;
+
             $tokenQueue  = new AbdmTokenQueue();
             $tokenNumber = $tokenQueue->nextTokenNumber();
             $today       = date('Y-m-d');
 
             $tokenQueue->insert([
+                'hospital_id'       => $hospitalId,
                 'abha_number'       => $abhaNumber,
                 'abha_address'      => $abhaAddress,
                 'patient_name'      => $name,
