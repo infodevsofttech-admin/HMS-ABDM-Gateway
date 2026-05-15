@@ -16,6 +16,7 @@ class HmsCredential extends Model
         'hms_name',
         'hms_api_endpoint',
         'hms_api_key',
+        'hms_api_key_hash',
         'hms_auth_type',
         'hms_username',
         'hms_password',

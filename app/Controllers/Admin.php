@@ -1188,6 +1188,7 @@ class Admin extends BaseController
             'hms_api_endpoint' => 'https://abdm-bridge.e-atria.in/api',
             'hms_auth_type'    => 'api_key',
             'hms_api_key'      => $this->encryptCredential($plainKey),
+            'hms_api_key_hash' => hash('sha256', $plainKey),
             'is_active'        => 1,
         ]);
 
@@ -1222,8 +1223,9 @@ class Admin extends BaseController
 
         $plainKey = bin2hex(random_bytes(32));
         $this->hmsCredentialModel->update($id, [
-            'hms_api_key'  => $this->encryptCredential($plainKey),
-            'is_verified'  => 0,
+            'hms_api_key'      => $this->encryptCredential($plainKey),
+            'hms_api_key_hash' => hash('sha256', $plainKey),
+            'is_verified'      => 0,
         ]);
 
         session()->setFlashdata('generated_key', $plainKey);

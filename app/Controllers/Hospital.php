@@ -318,6 +318,26 @@ class Hospital extends BaseController
         ]);
     }
 
+    // ─── API Documentation ───────────────────────────────────────────────────
+
+    public function apiDocs()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid        = $this->hospitalId();
+        $credModel  = new HmsCredential();
+        $credential = $credModel->getActiveByHospital($hid);
+
+        $hospitalModel = new AbdmHospital();
+        $hospital      = $hospitalModel->find($hid);
+
+        return view('hospital/api_docs', [
+            'hospital'    => $hospital,
+            'credential'  => $credential,
+            'base_url'    => 'https://abdm-bridge.e-atria.in',
+        ]);
+    }
+
     // ─── Profile (read-only) ─────────────────────────────────────────────────
 
     public function profile()

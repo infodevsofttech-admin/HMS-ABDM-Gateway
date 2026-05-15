@@ -23,6 +23,7 @@ $routes->post('portal/opd-queue/add',  'Hospital::opdQueueCreatePost',    ['filt
 $routes->post('portal/opd-queue/status','Hospital::opdQueueUpdateStatusPost',['filter' => 'auth']);
 $routes->get('portal/patients',        'Hospital::patients',              ['filter' => 'auth']);
 $routes->get('portal/reports',         'Hospital::reports',               ['filter' => 'auth']);
+$routes->get('portal/api-docs',         'Hospital::apiDocs',               ['filter' => 'auth']);
 $routes->get('portal/profile',         'Hospital::profile',               ['filter' => 'auth']);
 $routes->post('portal/profile/change-password', 'Hospital::changePasswordPost', ['filter' => 'auth']);
 $routes->get('portal/tickets',          'Hospital::tickets',               ['filter' => 'auth']);

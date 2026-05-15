@@ -895,7 +895,15 @@ class AbdmGateway extends BaseController
 
             $user = $this->findHospitalUserByToken($credential);
             if ($user === null) {
-                return 'invalid_token';
+                // Also try HMS credentials API key
+                $hmsUser = $this->findHospitalByHmsKey($credential);
+                if ($hmsUser === null) {
+                    return 'invalid_token';
+                }
+                $this->authHospitalId   = isset($hmsUser['hospital_id']) ? (int) $hmsUser['hospital_id'] : null;
+                $this->authHospitalMode = isset($hmsUser['gateway_mode']) ? (string) $hmsUser['gateway_mode'] : null;
+                $this->authPrincipal    = isset($hmsUser['hms_name']) ? (string) $hmsUser['hms_name'] : 'hms_api_key';
+                return 'valid';
             }
 
             $this->authUserId = isset($user['user_id']) ? (int) $user['user_id'] : null;
@@ -1019,6 +1027,39 @@ class AbdmGateway extends BaseController
             return is_object($row) ? (array) $row : (is_array($row) ? $row : null);
         } catch (\Exception $e) {
             log_message('error', 'Hospital username lookup failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Find hospital by HMS credentials API key hash.
+     * Returns hospital_id, gateway_mode, hms_name or null if not found.
+     *
+     * @return array<string,mixed>|null
+     */
+    protected function findHospitalByHmsKey(string $token): ?array
+    {
+        $token = trim($token);
+        if ($token === '') {
+            return null;
+        }
+
+        try {
+            $db   = \Config\Database::connect();
+            $hash = hash('sha256', $token);
+
+            $row = $db->table('hms_credentials hc')
+                ->select('hc.hospital_id, hc.hms_name, h.gateway_mode')
+                ->join('abdm_hospitals h', 'h.id = hc.hospital_id', 'inner')
+                ->where('hc.hms_api_key_hash', $hash)
+                ->where('hc.is_active', 1)
+                ->where('h.is_active', 1)
+                ->get()
+                ->getRowArray();
+
+            return $row ?: null;
+        } catch (\Exception $e) {
+            log_message('error', 'HMS key lookup failed: ' . $e->getMessage());
             return null;
         }
     }
