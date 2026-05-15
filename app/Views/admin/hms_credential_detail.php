@@ -89,6 +89,16 @@
                         <td><span class="label label-info">API KEY</span></td>
                     </tr>
                     <tr>
+                        <th>API Key</th>
+                        <td>
+                            <?php if (!empty($masked_key)): ?>
+                                <code style="font-size:12px;letter-spacing:1px;"><?= esc($masked_key) ?></code>
+                            <?php else: ?>
+                                <span class="text-muted">Not set</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
                         <th>Status</th>
                         <td>
                             <?php if ((int) $credential->is_active === 1): ?>
@@ -139,6 +149,17 @@
                     <?= csrf_field() ?>
                     <button type="submit" class="btn btn-warning btn-sm">
                         <i class="fa fa-refresh"></i> Regenerate API Key
+                    </button>
+                </form>
+                <form method="post" action="/admin/hms-credential/<?= esc((string) $credential->id) ?>/send-key-email"
+                      style="display:inline;margin-left:6px;"
+                      onsubmit="return confirm('Send API key to <?= esc((string) ($credential->contact_email ?? 'the registered email')) ?>?');">  
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn-info btn-sm">
+                        <i class="fa fa-envelope"></i> Send Key to Email
+                        <?php if (!empty($credential->contact_email)): ?>
+                            <small>(<?= esc((string) $credential->contact_email) ?>)</small>
+                        <?php endif; ?>
                     </button>
                 </form>
                 <form method="post" action="/admin/hms-credential/<?= esc((string) $credential->id) ?>/delete"

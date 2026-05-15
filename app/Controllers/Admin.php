@@ -1064,7 +1064,7 @@ class Admin extends BaseController
     public function hmsCredentialDetail(int $id)
     {
         $credential = $this->hmsCredentialModel
-            ->select('hms_credentials.*, abdm_hospitals.hospital_name, abdm_hospitals.hfr_id')
+            ->select('hms_credentials.*, abdm_hospitals.hospital_name, abdm_hospitals.hfr_id, abdm_hospitals.contact_email, abdm_hospitals.contact_name')
             ->join('abdm_hospitals', 'abdm_hospitals.id = hms_credentials.hospital_id', 'left')
             ->where('hms_credentials.id', $id)
             ->first();
@@ -1073,12 +1073,92 @@ class Admin extends BaseController
             return redirect()->to('/admin/hms-access')->with('error', 'Credential not found.');
         }
 
+        // Build a partially masked API key for display
+        $maskedKey = '';
+        if (!empty($credential->hms_api_key)) {
+            $plain = $this->decryptCredential($credential->hms_api_key);
+            if (strlen($plain) >= 10) {
+                $maskedKey = substr($plain, 0, 6) . str_repeat('*', 16) . substr($plain, -4);
+            } elseif ($plain !== '') {
+                $maskedKey = str_repeat('*', strlen($plain));
+            }
+        }
+
         return view('admin/hms_credential_detail', [
             'credential'    => $credential,
+            'masked_key'    => $maskedKey,
             'message'       => session()->getFlashdata('message'),
             'error'         => session()->getFlashdata('error'),
             'generated_key' => session()->getFlashdata('generated_key'),
         ]);
+    }
+
+    public function sendHmsKeyEmail(int $id)
+    {
+        $credential = $this->hmsCredentialModel
+            ->select('hms_credentials.*, abdm_hospitals.hospital_name, abdm_hospitals.hfr_id, abdm_hospitals.contact_email, abdm_hospitals.contact_name')
+            ->join('abdm_hospitals', 'abdm_hospitals.id = hms_credentials.hospital_id', 'left')
+            ->where('hms_credentials.id', $id)
+            ->first();
+
+        if ($credential === null) {
+            return redirect()->to('/admin/hms-access')->with('error', 'Credential not found.');
+        }
+
+        $toEmail = $credential->contact_email ?? '';
+        if ($toEmail === '') {
+            return redirect()->to("/admin/hms-credential/{$id}")->with('error', 'No contact email found for this hospital.');
+        }
+
+        $plain = $this->decryptCredential($credential->hms_api_key ?? '');
+        if ($plain === '') {
+            return redirect()->to("/admin/hms-credential/{$id}")->with('error', 'API key could not be retrieved. Try regenerating.');
+        }
+
+        $smtp = AppSetting::smtp();
+        if (empty($smtp['smtp_host'])) {
+            return redirect()->to("/admin/hms-credential/{$id}")->with('error', 'SMTP not configured. Go to System → SMTP Settings.');
+        }
+
+        try {
+            $email = \Config\Services::email();
+            $email->initialize([
+                'protocol'   => 'smtp',
+                'SMTPHost'   => $smtp['smtp_host'] ?? '',
+                'SMTPPort'   => (int)($smtp['smtp_port'] ?? 587),
+                'SMTPUser'   => $smtp['smtp_user'] ?? '',
+                'SMTPPass'   => $smtp['smtp_pass'] ?? '',
+                'SMTPCrypto' => $smtp['smtp_encryption'] ?? 'tls',
+                'mailType'   => 'html',
+                'charset'    => 'utf-8',
+            ]);
+
+            $fromEmail = $smtp['smtp_from_email'] ?? $smtp['smtp_user'] ?? '';
+            $fromName  = $smtp['smtp_from_name'] ?? 'ABDM Gateway';
+            $toName    = $credential->contact_name ?: $credential->hospital_name;
+
+            $email->setFrom($fromEmail, $fromName);
+            $email->setTo($toEmail, $toName);
+            $email->setSubject('ABDM Gateway — HMS API Key for ' . $credential->hospital_name);
+            $email->setMessage('
+<p>Dear ' . esc($toName) . ',</p>
+<p>Below are the credentials to connect your HMS system (<strong>' . esc($credential->hms_name) . '</strong>) to the ABDM Gateway.</p>
+<table style="border-collapse:collapse;font-family:monospace;">
+    <tr><td style="padding:6px 12px 6px 0;"><strong>Gateway API URL</strong></td><td style="padding:6px 0;"><code>https://abdm-bridge.e-atria.in/api</code></td></tr>
+    <tr><td style="padding:6px 12px 6px 0;"><strong>API Key</strong></td><td style="padding:6px 0;"><code>' . esc($plain) . '</code></td></tr>
+    <tr><td style="padding:6px 12px 6px 0;"><strong>Auth Header</strong></td><td style="padding:6px 0;"><code>Authorization: Bearer &lt;API Key&gt;</code></td></tr>
+    <tr><td style="padding:6px 12px 6px 0;"><strong>Hospital HFR ID</strong></td><td style="padding:6px 0;"><code>' . esc($credential->hfr_id) . '</code></td></tr>
+</table>
+<p style="color:#b91c1c;"><strong>Keep this key secure.</strong> Do not share it publicly.</p>
+<p>Regards,<br>' . esc($fromName) . '</p>');
+
+            $email->send();
+
+            return redirect()->to("/admin/hms-credential/{$id}")->with('message', 'API key sent to ' . $toEmail . ' successfully.');
+        } catch (\Throwable $e) {
+            log_message('error', 'HMS key email failed: ' . $e->getMessage());
+            return redirect()->to("/admin/hms-credential/{$id}")->with('error', 'Email failed: ' . $e->getMessage());
+        }
     }
 
     public function createHmsCredential()
