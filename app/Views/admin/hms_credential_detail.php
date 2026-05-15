@@ -1,143 +1,186 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>HMS Credential Detail - ABDM Gateway</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; }
-        .panel { background: #fff; padding: 16px; border-radius: 10px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-        .row { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 10px; margin-bottom: 10px; }
-        input, select, textarea, button { padding: 8px; font-family: monospace; }
-        input, select, textarea { width: 100%; }
-        button { background: #1d4ed8; color: #fff; border: none; cursor: pointer; border-radius: 4px; }
-        button:hover { background: #1e40af; }
-        .danger { background: #b91c1c; }
-        .danger:hover { background: #7f1d1d; }
-        .ok { color: #065f46; padding: 8px; background: #f0fdf4; border-radius: 4px; }
-        .err { color: #b91c1c; padding: 8px; background: #fef2f2; border-radius: 4px; }
-        a { color: #1d4ed8; text-decoration: none; }
-        .badge { display: inline-block; padding: 4px 12px; background: #ecfeff; border-radius: 4px; }
-        .badge.active { background: #d1fae5; }
-        .badge.verified { background: #d1fae5; }
-        .info-field { margin-bottom: 12px; }
-        .info-label { font-weight: bold; color: #666; }
-        .info-value { color: #333; margin-top: 4px; padding: 8px; background: #f3f4f6; border-radius: 4px; }
-        .status-ok { color: #065f46; font-weight: bold; }
-        .status-err { color: #b91c1c; font-weight: bold; }
-        .form-section { margin-top: 20px; }
-    </style>
-</head>
-<body>
-    <p><a href="/admin/hms-access">← Back to HMS Access</a></p>
-    <h1>HMS Credential Detail</h1>
+<?= $this->extend('layout/admin_layout') ?>
+<?php $title = 'HMS Credential Detail'; ?>
 
-    <?php if (!empty($message)): ?><div class="ok"><?= esc($message) ?></div><?php endif; ?>
-    <?php if (!empty($error)): ?><div class="err"><?= esc($error) ?></div><?php endif; ?>
+<?= $this->section('content') ?>
 
-    <div class="panel">
-        <h2>Hospital Information</h2>
-        <div class="info-field">
-            <div class="info-label">Hospital Name</div>
-            <div class="info-value"><?= esc((string) $credential->hospital_name) ?></div>
-        </div>
-        <div class="info-field">
-            <div class="info-label">HFR ID</div>
-            <div class="info-value"><?= esc((string) $credential->hfr_id) ?></div>
-        </div>
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-server"></i> HMS Credential Detail</h3>
     </div>
+    <div class="title_right">
+        <a href="/admin/hms-access" class="btn btn-default btn-sm pull-right">
+            <i class="fa fa-arrow-left"></i> Back to HMS Access
+        </a>
+    </div>
+</div>
+<div class="clearfix"></div>
 
-    <div class="panel">
-        <h2>HMS Configuration</h2>
-        <div class="info-field">
-            <div class="info-label">HMS System Name</div>
-            <div class="info-value"><?= esc((string) $credential->hms_name) ?></div>
-        </div>
-        <div class="info-field">
-            <div class="info-label">API Endpoint</div>
-            <div class="info-value"><code><?= esc((string) $credential->hms_api_endpoint) ?></code></div>
-        </div>
-        <div class="info-field">
-            <div class="info-label">Authentication Type</div>
-            <div class="info-value"><span class="badge"><?= esc((string) strtoupper($credential->hms_auth_type)) ?></span></div>
-        </div>
-        <div class="info-field">
-            <div class="info-label">Status</div>
-            <div class="info-value">
-                <?php if ((int) $credential->is_active === 1): ?>
-                    <span class="status-ok">● Active</span>
-                <?php else: ?>
-                    <span class="status-err">● Inactive</span>
-                <?php endif; ?>
+<?php if (!empty($message)): ?>
+    <div class="alert alert-success alert-dismissible" role="alert">
+        <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
+        <i class="fa fa-check-circle"></i> <?= esc($message) ?>
+    </div>
+<?php endif; ?>
+<?php if (!empty($error)): ?>
+    <div class="alert alert-danger alert-dismissible" role="alert">
+        <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
+        <i class="fa fa-exclamation-circle"></i> <?= esc($error) ?>
+    </div>
+<?php endif; ?>
+
+<div class="row">
+    <!-- Left column: info panels -->
+    <div class="col-md-4">
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-hospital-o"></i> Hospital Information</h2>
+                <div class="clearfix"></div>
+            </div>
+            <div class="x_content">
+                <table class="table table-bordered table-condensed">
+                    <tr>
+                        <th class="col-md-5">Hospital Name</th>
+                        <td><?= esc((string) $credential->hospital_name) ?></td>
+                    </tr>
+                    <tr>
+                        <th>HFR ID</th>
+                        <td><?= esc((string) $credential->hfr_id) ?></td>
+                    </tr>
+                </table>
             </div>
         </div>
-        <div class="info-field">
-            <div class="info-label">Verification Status</div>
-            <div class="info-value">
-                <?php if ((int) $credential->is_verified === 1): ?>
-                    <span class="status-ok">✓ Verified</span><br>
-                    Last Verified: <?= !empty($credential->last_verified_at) ? esc((string) $credential->last_verified_at) : 'N/A' ?>
-                <?php else: ?>
-                    <span class="status-err">✗ Not Verified</span>
-                <?php endif; ?>
+
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-info-circle"></i> HMS Configuration</h2>
+                <div class="clearfix"></div>
+            </div>
+            <div class="x_content">
+                <table class="table table-bordered table-condensed">
+                    <tr>
+                        <th class="col-md-5">HMS Name</th>
+                        <td><?= esc((string) $credential->hms_name) ?></td>
+                    </tr>
+                    <tr>
+                        <th>API Endpoint</th>
+                        <td><code style="word-break:break-all;"><?= esc((string) $credential->hms_api_endpoint) ?></code></td>
+                    </tr>
+                    <tr>
+                        <th>Auth Type</th>
+                        <td><span class="label label-info"><?= esc((string) strtoupper($credential->hms_auth_type)) ?></span></td>
+                    </tr>
+                    <tr>
+                        <th>Status</th>
+                        <td>
+                            <?php if ((int) $credential->is_active === 1): ?>
+                                <span class="label label-success">Active</span>
+                            <?php else: ?>
+                                <span class="label label-danger">Inactive</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Verified</th>
+                        <td>
+                            <?php if ((int) $credential->is_verified === 1): ?>
+                                <span class="label label-success"><i class="fa fa-check"></i> Verified</span><br>
+                                <small class="text-muted"><?= !empty($credential->last_verified_at) ? esc((string) $credential->last_verified_at) : 'N/A' ?></small>
+                            <?php else: ?>
+                                <span class="label label-warning"><i class="fa fa-times"></i> Not Verified</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Created</th>
+                        <td><?= esc((string) $credential->created_at) ?></td>
+                    </tr>
+                    <tr>
+                        <th>Last Updated</th>
+                        <td><?= esc((string) $credential->updated_at) ?></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-bolt"></i> Actions</h2>
+                <div class="clearfix"></div>
+            </div>
+            <div class="x_content">
+                <form method="post" action="/admin/hms-credential/<?= esc((string) $credential->id) ?>/test" style="display:inline;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fa fa-plug"></i> Test Connection
+                    </button>
+                </form>
+                &nbsp;
+                <form method="post" action="/admin/hms-credential/<?= esc((string) $credential->id) ?>/delete" style="display:inline;"
+                      onsubmit="return confirm('Are you sure you want to delete this credential?');">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fa fa-trash"></i> Delete Credential
+                    </button>
+                </form>
             </div>
         </div>
     </div>
 
-    <div class="panel">
-        <h2>Update Credential</h2>
-        <form method="post" action="/admin/hms-credential/<?= esc((string) $credential->id) ?>/update">
-            <div class="row">
-                <input name="hms_api_endpoint" value="<?= esc((string) $credential->hms_api_endpoint) ?>" placeholder="HMS API Endpoint" required>
+    <!-- Right column: update form -->
+    <div class="col-md-8">
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-edit"></i> Update Credential</h2>
+                <div class="clearfix"></div>
             </div>
+            <div class="x_content">
+                <form method="post" action="/admin/hms-credential/<?= esc((string) $credential->id) ?>/update" class="form-horizontal">
+                    <?= csrf_field() ?>
+                    <div class="form-group">
+                        <label class="col-sm-3 control-label">API Endpoint</label>
+                        <div class="col-sm-9">
+                            <input type="text" name="hms_api_endpoint" class="form-control"
+                                   value="<?= esc((string) $credential->hms_api_endpoint) ?>" placeholder="HMS API Endpoint" required>
+                        </div>
+                    </div>
 
-            <?php if ($credential->hms_auth_type === 'api_key'): ?>
-                <div class="row">
-                    <input name="hms_api_key" type="password" placeholder="API Key (leave blank to keep current)">
-                </div>
-            <?php elseif ($credential->hms_auth_type === 'basic'): ?>
-                <div class="row">
-                    <input name="hms_password" type="password" placeholder="Password (leave blank to keep current)">
-                </div>
-            <?php endif; ?>
+                    <?php if ($credential->hms_auth_type === 'api_key'): ?>
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">API Key</label>
+                            <div class="col-sm-9">
+                                <input type="password" name="hms_api_key" class="form-control" placeholder="Leave blank to keep current">
+                            </div>
+                        </div>
+                    <?php elseif ($credential->hms_auth_type === 'basic'): ?>
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">Password</label>
+                            <div class="col-sm-9">
+                                <input type="password" name="hms_password" class="form-control" placeholder="Leave blank to keep current">
+                            </div>
+                        </div>
+                    <?php endif; ?>
 
-            <div class="row">
-                <select name="is_active">
-                    <option value="1" <?= (int) $credential->is_active === 1 ? 'selected' : '' ?>>Active</option>
-                    <option value="0" <?= (int) $credential->is_active === 0 ? 'selected' : '' ?>>Inactive</option>
-                </select>
+                    <div class="form-group">
+                        <label class="col-sm-3 control-label">Status</label>
+                        <div class="col-sm-9">
+                            <select name="is_active" class="form-control">
+                                <option value="1" <?= (int) $credential->is_active === 1 ? 'selected' : '' ?>>Active</option>
+                                <option value="0" <?= (int) $credential->is_active === 0 ? 'selected' : '' ?>>Inactive</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="col-sm-offset-3 col-sm-9">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fa fa-save"></i> Update Credential
+                            </button>
+                        </div>
+                    </div>
+                </form>
             </div>
-
-            <p><button type="submit">Update Credential</button></p>
-        </form>
-    </div>
-
-    <div class="panel">
-        <h2>Actions</h2>
-        <div class="row" style="grid-template-columns: 1fr 1fr;">
-            <form method="post" action="/admin/hms-credential/<?= esc((string) $credential->id) ?>/test">
-                <button type="submit" style="background: #059669;">🔄 Test Connection</button>
-            </form>
-            <form method="post" action="/admin/hms-credential/<?= esc((string) $credential->id) ?>/delete" onsubmit="return confirm('Are you sure you want to delete this credential?');">
-                <button type="submit" class="danger">🗑 Delete Credential</button>
-            </form>
         </div>
     </div>
+</div>
 
-    <div class="panel">
-        <h2>Credential Information</h2>
-        <div class="info-field">
-            <div class="info-label">Created</div>
-            <div class="info-value"><?= esc((string) $credential->created_at) ?></div>
-        </div>
-        <div class="info-field">
-            <div class="info-label">Last Updated</div>
-            <div class="info-value"><?= esc((string) $credential->updated_at) ?></div>
-        </div>
-        <div class="info-field">
-            <div class="info-label">Credential ID</div>
-            <div class="info-value"><code><?= esc((string) $credential->id) ?></code></div>
-        </div>
-    </div>
-</body>
-</html>
+<?= $this->endSection() ?>

@@ -1,138 +1,184 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>HMS Access Management - ABDM Gateway</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 24px; background: #f8fafc; }
-        .panel { background: #fff; padding: 16px; border-radius: 10px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-        .row { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 10px; }
-        input, select, textarea, button { padding: 8px; font-family: monospace; }
-        input, select, textarea { width: 100%; }
-        button { background: #1d4ed8; color: #fff; border: none; cursor: pointer; border-radius: 4px; }
-        button:hover { background: #1e40af; }
-        .danger { background: #b91c1c; }
-        .danger:hover { background: #7f1d1d; }
-        table { width: 100%; border-collapse: collapse; background: #fff; }
-        th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
-        th { background: #ecfeff; }
-        .status-ok { color: #065f46; font-weight: bold; }
-        .status-err { color: #b91c1c; font-weight: bold; }
-        .ok { color: #065f46; padding: 8px; background: #f0fdf4; border-radius: 4px; }
-        .err { color: #b91c1c; padding: 8px; background: #fef2f2; border-radius: 4px; }
-        a { color: #1d4ed8; text-decoration: none; }
-        .badge { display: inline-block; padding: 2px 8px; background: #ecfeff; border-radius: 4px; font-size: 0.85em; }
-        .badge.active { background: #d1fae5; }
-        .badge.verified { background: #d1fae5; }
-        .action-links { display: flex; gap: 8px; font-size: 0.9em; }
-        .action-links form { display: inline; }
-        .action-links button { padding: 4px 8px; font-size: 0.85em; }
-    </style>
-</head>
-<body>
-    <p><a href="/admin/dashboard">← Back to Dashboard</a></p>
-    <h1>HMS Access Management</h1>
-    
-    <?php if (!empty($message)): ?><div class="ok"><?= esc($message) ?></div><?php endif; ?>
-    <?php if (!empty($error)): ?><div class="err"><?= esc($error) ?></div><?php endif; ?>
+<?= $this->extend('layout/admin_layout') ?>
+<?php $title = 'HMS Access Management'; ?>
 
-    <div class="panel">
-        <h2>Add HMS Credential</h2>
-        <form method="post" action="/admin/hms-credential/create">
-            <div class="row">
-                <select name="hospital_id" required>
-                    <option value="">Select Hospital</option>
-                    <?php foreach ($hospitals as $hospital): ?>
-                        <option value="<?= esc((string) $hospital->id) ?>">
-                            <?= esc((string) $hospital->hospital_name) ?> (<?= esc((string) $hospital->hfr_id) ?>)
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                <input name="hms_name" placeholder="HMS System Name (e.g., Meddata HMS, Athenahealth)" required>
-                <input name="hms_api_endpoint" placeholder="HMS API Endpoint (e.g., https://hms.example.com/api)" required>
-                <select name="hms_auth_type" id="authType" required onchange="toggleAuthFields()">
-                    <option value="api_key">API Key Authentication</option>
-                    <option value="basic">Basic Authentication (Username/Password)</option>
-                </select>
-            </div>
+<?= $this->section('content') ?>
 
-            <div id="apiKeyFields" class="row" style="margin-top: 10px;">
-                <input name="hms_api_key" type="password" placeholder="API Key" id="apiKeyInput">
-            </div>
-
-            <div id="basicAuthFields" class="row" style="margin-top: 10px; display: none;">
-                <input name="hms_username" placeholder="Username" id="basicUsername">
-                <input name="hms_password" type="password" placeholder="Password" id="basicPassword">
-            </div>
-
-            <p style="margin-top: 10px;"><button type="submit">Add HMS Credential</button></p>
-        </form>
+<div class="page-title">
+    <div class="title_left">
+        <h3><i class="fa fa-server"></i> HMS Access Management</h3>
     </div>
+</div>
+<div class="clearfix"></div>
 
-    <script>
-        function toggleAuthFields() {
-            const authType = document.getElementById('authType').value;
-            document.getElementById('apiKeyFields').style.display = authType === 'api_key' ? 'grid' : 'none';
-            document.getElementById('basicAuthFields').style.display = authType === 'basic' ? 'grid' : 'none';
-        }
-    </script>
+<?php if (!empty($message)): ?>
+    <div class="alert alert-success alert-dismissible" role="alert">
+        <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
+        <i class="fa fa-check-circle"></i> <?= esc($message) ?>
+    </div>
+<?php endif; ?>
+<?php if (!empty($error)): ?>
+    <div class="alert alert-danger alert-dismissible" role="alert">
+        <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
+        <i class="fa fa-exclamation-circle"></i> <?= esc($error) ?>
+    </div>
+<?php endif; ?>
 
-    <div class="panel">
-        <h2>HMS Credentials List</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Hospital</th>
-                    <th>HMS Name</th>
-                    <th>Auth Type</th>
-                    <th>Status</th>
-                    <th>Verified</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (!empty($credentials)): ?>
-                    <?php foreach ($credentials as $cred): ?>
+<div class="row">
+    <div class="col-md-12">
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-plus-circle"></i> Add HMS Credential</h2>
+                <div class="clearfix"></div>
+            </div>
+            <div class="x_content">
+                <form method="post" action="/admin/hms-credential/create" class="form-horizontal">
+                    <?= csrf_field() ?>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label class="control-label">Hospital</label>
+                                <select name="hospital_id" class="form-control" required>
+                                    <option value="">-- Select Hospital --</option>
+                                    <?php foreach ($hospitals as $hospital): ?>
+                                        <option value="<?= esc((string) $hospital->id) ?>">
+                                            <?= esc((string) $hospital->hospital_name) ?> (<?= esc((string) $hospital->hfr_id) ?>)
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label class="control-label">HMS System Name</label>
+                                <input type="text" name="hms_name" class="form-control" placeholder="e.g. Meddata HMS, Athenahealth" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label class="control-label">API Endpoint</label>
+                                <input type="text" name="hms_api_endpoint" class="form-control" placeholder="https://hms.example.com/api" required>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-group">
+                                <label class="control-label">Auth Type</label>
+                                <select name="hms_auth_type" id="authType" class="form-control" required onchange="toggleAuthFields()">
+                                    <option value="api_key">API Key</option>
+                                    <option value="basic">Basic Auth</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="apiKeyFields" class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="control-label">API Key</label>
+                                <input type="password" name="hms_api_key" id="apiKeyInput" class="form-control" placeholder="API Key">
+                            </div>
+                        </div>
+                    </div>
+                    <div id="basicAuthFields" class="row" style="display:none;">
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label class="control-label">Username</label>
+                                <input type="text" name="hms_username" id="basicUsername" class="form-control" placeholder="Username">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label class="control-label">Password</label>
+                                <input type="password" name="hms_password" id="basicPassword" class="form-control" placeholder="Password">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fa fa-save"></i> Add HMS Credential
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="x_panel">
+            <div class="x_title">
+                <h2><i class="fa fa-list"></i> HMS Credentials List</h2>
+                <div class="clearfix"></div>
+            </div>
+            <div class="x_content">
+                <table class="table table-striped table-bordered">
+                    <thead>
                         <tr>
-                            <td>
-                                <strong><?= esc((string) $cred->hospital_name) ?></strong><br>
-                                <small><?= esc((string) $cred->hfr_id) ?></small>
-                            </td>
-                            <td><?= esc((string) $cred->hms_name) ?></td>
-                            <td><span class="badge"><?= esc((string) strtoupper($cred->hms_auth_type)) ?></span></td>
-                            <td>
-                                <?php if ((int) $cred->is_active === 1): ?>
-                                    <span class="status-ok">● Active</span>
-                                <?php else: ?>
-                                    <span class="status-err">● Inactive</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php if ((int) $cred->is_verified === 1): ?>
-                                    <span class="status-ok">✓ Verified</span><br>
-                                    <small><?= !empty($cred->last_verified_at) ? esc((string) $cred->last_verified_at) : 'N/A' ?></small>
-                                <?php else: ?>
-                                    <span class="status-err">✗ Not Verified</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <div class="action-links">
-                                    <a href="/admin/hms-credential/<?= esc((string) $cred->id) ?>">View</a>
-                                    <form method="post" action="/admin/hms-credential/<?= esc((string) $cred->id) ?>/test" style="display: inline;">
-                                        <button type="submit" style="background: #059669;">Test Connection</button>
-                                    </form>
-                                </div>
-                            </td>
+                            <th>Hospital</th>
+                            <th>HMS Name</th>
+                            <th>Auth Type</th>
+                            <th>Status</th>
+                            <th>Verified</th>
+                            <th>Actions</th>
                         </tr>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: #999;">No HMS credentials found</td>
-                    </tr>
-                <?php endif; ?>
-            </tbody>
-        </table>
+                    </thead>
+                    <tbody>
+                        <?php if (!empty($credentials)): ?>
+                            <?php foreach ($credentials as $cred): ?>
+                                <tr>
+                                    <td>
+                                        <strong><?= esc((string) $cred->hospital_name) ?></strong><br>
+                                        <small class="text-muted"><?= esc((string) $cred->hfr_id) ?></small>
+                                    </td>
+                                    <td><?= esc((string) $cred->hms_name) ?></td>
+                                    <td><span class="label label-info"><?= esc((string) strtoupper($cred->hms_auth_type)) ?></span></td>
+                                    <td>
+                                        <?php if ((int) $cred->is_active === 1): ?>
+                                            <span class="label label-success">Active</span>
+                                        <?php else: ?>
+                                            <span class="label label-danger">Inactive</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php if ((int) $cred->is_verified === 1): ?>
+                                            <span class="label label-success"><i class="fa fa-check"></i> Verified</span><br>
+                                            <small class="text-muted"><?= !empty($cred->last_verified_at) ? esc((string) $cred->last_verified_at) : 'N/A' ?></small>
+                                        <?php else: ?>
+                                            <span class="label label-warning"><i class="fa fa-times"></i> Not Verified</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <a href="/admin/hms-credential/<?= esc((string) $cred->id) ?>" class="btn btn-xs btn-default">
+                                            <i class="fa fa-eye"></i> View
+                                        </a>
+                                        <form method="post" action="/admin/hms-credential/<?= esc((string) $cred->id) ?>/test" style="display:inline;">
+                                            <?= csrf_field() ?>
+                                            <button type="submit" class="btn btn-xs btn-success">
+                                                <i class="fa fa-plug"></i> Test
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">No HMS credentials found</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
-</body>
-</html>
+</div>
+
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script>
+    function toggleAuthFields() {
+        var authType = document.getElementById('authType').value;
+        document.getElementById('apiKeyFields').style.display = authType === 'api_key' ? 'block' : 'none';
+        document.getElementById('basicAuthFields').style.display = authType === 'basic' ? 'block' : 'none';
+    }
+</script>
+<?= $this->endSection() ?>
