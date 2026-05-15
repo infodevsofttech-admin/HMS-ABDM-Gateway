@@ -561,6 +561,132 @@ class AbdmGateway extends BaseController
     }
 
     /**
+     * ABHA Card Download
+     * GET /api/v3/abha/card?token=<x_token>
+     *
+     * Returns the official ABHA card image (PNG/SVG) as base64 in JSON.
+     * The `token` parameter is the X-Token returned by mobile/aadhaar verify-otp.
+     */
+    public function abhaCard()
+    {
+        $requestId  = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'GET', '/api/v3/abha/card', 403,
+                              $authStatus, 'Invalid or missing bearer token');
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0, 'error' => 'Unauthorized', 'request_id' => $requestId,
+            ]);
+        }
+
+        $xToken = trim((string) $this->request->getGet('token'));
+        if ($xToken === '') {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok'         => 0,
+                'error'      => 'token parameter required (X-Token value from verify-otp response)',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            // 1×1 transparent PNG placeholder for test mode
+            $mockPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAAbjAAAAABJRU5ErkJggg==';
+            return $this->response->setJSON([
+                'ok'         => 1,
+                'mode'       => 'test',
+                'request_id' => $requestId,
+                'data'       => [
+                    'card_format' => 'png',
+                    'card_data'   => $mockPng,
+                    'message'     => 'Mock ABHA card in test mode',
+                ],
+            ]);
+        }
+
+        $this->bootRepositories();
+        $startTime = microtime(true);
+        $cfg       = config('AbdmGateway');
+        $abdmToken = $this->getAbdmAccessToken();
+        $abdmReqId = $this->generateAbdmRequestId();
+        $ep        = '/api/v3/abha/card';
+
+        try {
+            $cardUrl = rtrim($cfg->m1BaseUrl, '/') . '/abha/api/v3/profile/account/abha-card';
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $cardUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 30,
+                CURLOPT_HEADER         => true,
+                CURLOPT_HTTPHEADER     => [
+                    'Accept: image/png, image/svg+xml, */*',
+                    'Authorization: Bearer ' . $abdmToken,
+                    'X-Token: Bearer ' . $xToken,
+                    'REQUEST-ID: ' . $abdmReqId,
+                    'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $raw          = curl_exec($ch);
+            $httpCode     = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $hdrSize      = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            $curlErr      = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlErr) {
+                throw new \RuntimeException('cURL error: ' . $curlErr);
+            }
+
+            $respHeaders  = substr((string) $raw, 0, $hdrSize);
+            $body         = substr((string) $raw, $hdrSize);
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+
+            if ($httpCode >= 400) {
+                $this->logRequest($requestId, 'GET', $ep, $httpCode, 'valid', 'ABDM card error HTTP ' . $httpCode, $responseTime, substr($body, 0, 500));
+                return $this->response->setStatusCode(502)->setJSON([
+                    'ok' => 0, 'error' => 'ABDM returned HTTP ' . $httpCode, 'request_id' => $requestId,
+                ]);
+            }
+
+            // Detect content type from ABDM response headers
+            $contentType = 'image/png';
+            if (preg_match('/content-type:\s*([^\r\n]+)/i', $respHeaders, $m)) {
+                $contentType = trim(explode(';', $m[1])[0]);
+            }
+
+            // Unwrap JSON wrapper if ABDM returns base64 inside JSON
+            if (str_contains($contentType, 'application/json') || str_contains($contentType, 'text/')) {
+                $decoded = json_decode($body, true);
+                if (is_array($decoded)) {
+                    $b64 = $decoded['image'] ?? $decoded['data'] ?? $decoded['abhaCard'] ?? null;
+                    if ($b64 !== null) {
+                        $this->logRequest($requestId, 'GET', $ep, 200, 'valid', null, $responseTime, $body);
+                        return $this->response->setJSON([
+                            'ok'         => 1,
+                            'request_id' => $requestId,
+                            'data'       => ['card_format' => 'png', 'card_data' => (string) $b64],
+                        ]);
+                    }
+                }
+            }
+
+            $this->logRequest($requestId, 'GET', $ep, 200, 'valid', null, $responseTime, '[binary ' . strlen($body) . ' bytes]');
+            return $this->response->setJSON([
+                'ok'         => 1,
+                'request_id' => $requestId,
+                'data'       => ['card_format' => 'png', 'card_data' => base64_encode($body)],
+            ]);
+
+        } catch (\Throwable $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'GET', $ep, 500, 'valid', $e->getMessage(), $responseTime);
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0, 'error' => $e->getMessage(), 'request_id' => $requestId,
+            ]);
+        }
+    }
+
+    /**
      * Consent Request Endpoint
      * POST /api/v3/consent/request
      */

@@ -217,6 +217,12 @@
                     <td><span class="badge badge-auth">Bearer</span></td>
                 </tr>
                 <tr>
+                    <td><span class="badge badge-get">GET</span></td>
+                    <td><code>/api/v3/abha/card?token=&lt;x_token&gt;</code></td>
+                    <td>Download official ABHA card (PNG base64) — <code>token</code> = X-Token from verify-otp response</td>
+                    <td><span class="badge badge-auth">Bearer</span></td>
+                </tr>
+                <tr>
                     <td><span class="badge badge-post">POST</span></td>
                     <td><code>/api/v3/consent/request</code></td>
                     <td>Request ABDM data consent from patient</td>

@@ -124,6 +124,12 @@ $hfrId      = is_object($hospital) ? ($hospital->hfr_id ?? 'YOUR_HFR_ID') : 'YOU
                             <td style="padding:10px 16px;"><span class="hb hb-blue" style="font-size:10px;">Bearer</span></td>
                         </tr>
                         <tr>
+                            <td style="padding:10px 16px;"><span style="background:#28a745;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">GET</span></td>
+                            <td style="padding:10px 16px;font-family:monospace;font-size:12px;">/api/v3/abha/card?token=&lt;x_token&gt;</td>
+                            <td style="padding:10px 16px;">Download ABHA card image (PNG base64) — <code>token</code> = X-Token from verify-otp</td>
+                            <td style="padding:10px 16px;"><span class="hb hb-blue" style="font-size:10px;">Bearer</span></td>
+                        </tr>
+                        <tr>
                             <td style="padding:10px 16px;"><span style="background:#007bff;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;">POST</span></td>
                             <td style="padding:10px 16px;font-family:monospace;font-size:12px;">/api/v3/consent/request</td>
                             <td style="padding:10px 16px;">Request ABDM data consent from patient</td>

@@ -56,6 +56,9 @@ $routes->group('api/v3', static function($routes) {
     $routes->post('abha/aadhaar/verify-otp', 'AbdmGateway::abhaAadhaarVerifyOtp');
     $routes->post('abha/mobile/generate-otp', 'AbdmGateway::abhaMobileGenerateOtp');
     $routes->post('abha/mobile/verify-otp', 'AbdmGateway::abhaMobileVerifyOtp');
+
+    // ABHA Card Download
+    $routes->get('abha/card', 'AbdmGateway::abhaCard');
     
     // Consent Operations
     $routes->post('consent/request', 'AbdmGateway::consentRequest');
