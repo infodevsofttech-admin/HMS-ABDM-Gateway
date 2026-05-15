@@ -1315,13 +1315,19 @@ class AbdmGateway extends BaseController
             return $this->abdmPublicKey;
         }
 
-        $certUrl = rtrim(config('AbdmGateway')->m1BaseUrl, '/') . '/abha/api/v3/profile/public/certificate';
+        $certUrl    = rtrim(config('AbdmGateway')->m1BaseUrl, '/') . '/abha/api/v3/profile/public/certificate';
+        $abdmToken  = $this->getAbdmAccessToken();
         $ch = curl_init($certUrl);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 10,
             CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+            CURLOPT_HTTPHEADER     => [
+                'Authorization: Bearer ' . $abdmToken,
+                'Accept: application/json',
+                'REQUEST-ID: ' . $this->generateAbdmRequestId(),
+                'TIMESTAMP: '  . gmdate('Y-m-d\TH:i:s.000\Z'),
+            ],
         ]);
         $resp = curl_exec($ch);
         curl_close($ch);
@@ -1334,6 +1340,17 @@ class AbdmGateway extends BaseController
         // ABDM returns: { "publicKey": "-----BEGIN PUBLIC KEY-----\n..." }
         $this->abdmPublicKey = $data['publicKey'] ?? (string) $resp;
         return $this->abdmPublicKey;
+    }
+
+    /**
+     * Generate a UUID v4 formatted request ID for ABDM headers.
+     */
+    private function generateAbdmRequestId(): string
+    {
+        $b = random_bytes(16);
+        $b[6] = chr(ord($b[6]) & 0x0f | 0x40);
+        $b[8] = chr(ord($b[8]) & 0x3f | 0x80);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
     }
 
     /**
@@ -1374,7 +1391,9 @@ class AbdmGateway extends BaseController
                     'Authorization: Bearer ' . $abdmToken,
                     'Content-Type: application/json',
                     'Accept: application/json',
-                    'X-Client-ID: ' . config('AbdmGateway')->sourceCode,
+                    'X-Client-ID: '   . config('AbdmGateway')->sourceCode,
+                    'REQUEST-ID: '    . $this->generateAbdmRequestId(),
+                    'TIMESTAMP: '     . gmdate('Y-m-d\TH:i:s.000\Z'),
                 ],
                 CURLOPT_SSL_VERIFYPEER => false,
             ]);
@@ -1495,6 +1514,8 @@ class AbdmGateway extends BaseController
                     'Content-Type: application/json',
                     'Accept: application/json',
                     'X-Client-ID: ' . config('AbdmGateway')->sourceCode,
+                    'REQUEST-ID: '  . $this->generateAbdmRequestId(),
+                    'TIMESTAMP: '   . gmdate('Y-m-d\\TH:i:s.000\\Z'),
                 ],
                 CURLOPT_SSL_VERIFYPEER => false,
             ]);
