@@ -805,6 +805,21 @@ class Hospital extends BaseController
         return strip_tags($html, $allowed);
     }
 
+    // ─── Health Facility QR ──────────────────────────────────────────────────
+
+    public function facilityQr()
+    {
+        if (!$this->guardHospital()) return $this->redirectUnauth();
+
+        $hid           = $this->hospitalId();
+        $hospitalModel = new AbdmHospital();
+        $hospital      = $hospitalModel->find($hid);
+
+        return view('hospital/facility_qr', [
+            'hospital' => $hospital,
+        ]);
+    }
+
     // ─── Serve stored official ABHA card PNG ──────────────────────────────────
 
     public function patientAbhaCard(): \CodeIgniter\HTTP\ResponseInterface

@@ -70,6 +70,9 @@
                         <li class="<?= str_contains(current_url(), '/admin/m1') ? 'current-page active' : '' ?>">
                             <a href="/admin/m1"><i class="fa fa-heartbeat"></i> M1 Suite</a>
                         </li>
+                        <li class="<?= str_contains(current_url(), '/admin/facility-qr') ? 'current-page active' : '' ?>">
+                            <a href="/admin/facility-qr"><i class="fa fa-qrcode"></i> Facility QR</a>
+                        </li>
                     </ul>
                 </div>
                 <div class="menu_section">

@@ -2510,5 +2510,27 @@ class Admin extends BaseController
             return redirect()->to('/admin/settings/smtp')->with('error', 'Email failed: ' . $e->getMessage());
         }
     }
+
+    // ─── Facility QR ─────────────────────────────────────────────────────────
+
+    public function facilityQr()
+    {
+        $hospitalId    = (int) $this->request->getGet('hospital_id');
+        $hospitalModel = new AbdmHospital();
+
+        if ($hospitalId > 0) {
+            $hospital = $hospitalModel->find($hospitalId);
+        } else {
+            // Default to first active hospital if no id given
+            $hospital = $hospitalModel->where('is_active', 1)->first();
+        }
+
+        $hospitals = $hospitalModel->where('is_active', 1)->findAll();
+
+        return view('admin/facility_qr', [
+            'hospital'  => $hospital,
+            'hospitals' => $hospitals,
+        ]);
+    }
 }
 

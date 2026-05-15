@@ -209,6 +209,7 @@
     <ul class="hp-topnav">
         <li><a href="/dashboard" class="<?= str_ends_with(current_url(), '/dashboard') ? 'active' : '' ?>"><i class="fas fa-home"></i> Dashboard</a></li>
         <li><a href="/portal/abha-tools" class="<?= str_contains(current_url(), 'abha-tools') ? 'active' : '' ?>"><i class="fas fa-id-card"></i> ABHA Tools</a></li>
+        <li><a href="/portal/facility-qr" class="<?= str_contains(current_url(), 'facility-qr') ? 'active' : '' ?>"><i class="fas fa-qrcode"></i> Facility QR</a></li>
         <li><a href="/portal/opd-queue" class="<?= str_contains(current_url(), 'opd-queue') ? 'active' : '' ?>"><i class="fas fa-list-ol"></i> OPD Queue</a></li>
         <li><a href="/portal/patients" class="<?= str_contains(current_url(), 'patients') ? 'active' : '' ?>"><i class="fas fa-user-injured"></i> Patients</a></li>
         <li><a href="/portal/reports" class="<?= str_contains(current_url(), 'reports') ? 'active' : '' ?>"><i class="fas fa-chart-bar"></i> Reports</a></li>
@@ -241,6 +242,7 @@
 <div id="hp-mnav" class="hp-mobile-nav">
     <a href="/dashboard"><i class="fas fa-home"></i> Dashboard</a>
     <a href="/portal/abha-tools"><i class="fas fa-id-card"></i> ABHA Tools</a>
+    <a href="/portal/facility-qr"><i class="fas fa-qrcode"></i> Facility QR</a>
     <a href="/portal/opd-queue"><i class="fas fa-list-ol"></i> OPD Queue</a>
     <a href="/portal/patients"><i class="fas fa-user-injured"></i> Patients</a>
     <a href="/portal/reports"><i class="fas fa-chart-bar"></i> Reports</a>
