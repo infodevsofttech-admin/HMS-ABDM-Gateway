@@ -6,7 +6,7 @@
 **Environment:** ABDM Sandbox  
 **Gateway URL:** `https://abdm-bridge.e-atria.in`  
 **Date:** May 2026  
-**Status:** Milestone 1 (M1) Complete — Pending HFR Bridge Registration
+**Status:** Milestone 1 (M1) — Code Complete | Pending ABDM Portal API Subscriptions
 
 ---
 
@@ -948,18 +948,69 @@ FROM abdm_token_queue WHERE hospital_id = 1 ORDER BY id DESC LIMIT 1;
 
 ## 10. Pending Items for Sandbox Exit
 
-### 10.1 Required for M1 Clearance
+### 10.1 M1 Code Status (Gateway Side)
 
-| Item | Action Required | Owner |
+All M1 API endpoints are implemented. Latest commit: `3e80c09`
+
+| Endpoint | Gateway Route | ABDM Path | Status |
+|---|---|---|---|
+| ABHA creation (Aadhaar OTP) | `POST abha/aadhaar/generate-otp` | `enrollment/request/otp` | ✅ |
+| ABHA creation (Aadhaar verify) | `POST abha/aadhaar/verify-otp` | `enrollment/enrol/byAadhaar` | ✅ |
+| Post-enrollment mobile auth | `POST abha/enrol/auth` | `enrollment/auth/byAbdm` | ✅ Added |
+| ABHA suggestions | `GET abha/suggestions` | `enrollment/enrol/suggestion` | ✅ |
+| Set ABHA address | `POST abha/set-address` | `enrollment/enrol/abha-address` | ✅ |
+| Mobile login OTP | `POST abha/mobile/generate-otp` | `profile/login/request/otp` | ✅ |
+| Mobile login verify | `POST abha/mobile/verify-otp` | `profile/login/verify` | ✅ |
+| Password login search | `POST abha/login/search` | `profile/login/search` | ✅ Added |
+| ABHA account search | `POST abha/account/search` | `profile/account/abha/search` | ✅ Added |
+| Email verification link | `POST abha/account/email/request-verify` | `profile/account/request/emailVerificationLink` | ✅ Added |
+| ABHA Card (enrollment) | `GET abha/card` | `profile/account/abha-card` | ✅ |
+| ABHA Card (account) | `GET abha/account/abha-card` | `profile/account/abha-card` | ✅ Added |
+| Profile GET | `GET profile/account` | `profile/account` | ✅ |
+| Scan & Share callback | `POST hip/patient/share` | (inbound callback) | ✅ |
+
+### 10.2 Required ABDM Portal Actions (Blocking)
+
+These are **portal-level actions**, not code changes. The ABDM sandbox account (`SBXID_033661`) must subscribe to these APIs at the ABDM Developer Portal.
+
+**Error received:** `900908 — API Subscription validation failed`
+
+| API Group | Endpoint Blocked | Portal Action |
 |---|---|---|
-| HFR Registration | Complete Health Facility profile on `facilitysbx.abdm.gov.in`; obtain official `HFR ID` | Hospital Admin |
-| Bridge URL Registration | Call `POST /v1/bridges/MutipleHRPAddUpdateServices` with production `hfr_id` and gateway URL | Technical Team |
-| Official Facility QR | Download official QR from HFR Sandbox after HFR registration; upload via admin panel | Hospital Admin |
-| HIP Callback URL | Register `https://abdm-bridge.e-atria.in/api/v3/hip/patient/share` in ABDM HIP settings | Technical Team |
-| Scan & Share Live Test | Test with real ABHA app on sandbox; verify patient appears in OPD queue | QA Team |
-| ABHA Enrollment Quota | Confirm sandbox ABHA creation works end-to-end with real Aadhaar test data | QA Team |
+| Gateway Bridge API | `PATCH /gateway/v1/bridges` | Subscribe to "Gateway" API product in ABDM portal |
+| HFR / NHPR API | `POST /v4/int/v1/bridges/MutipleHRPAddUpdateServices` | Subscribe to "NHPR" API product |
+| Facility Bridge Services | `GET /gateway/v1/bridges/getServices` | Same Gateway subscription |
 
-### 10.2 Required for M2 / M3
+**Step-by-step to unblock:**
+1. Log in at `https://sandbox.abdm.gov.in/` (or the developer console)
+2. Go to **API Subscriptions** or **My Applications**
+3. Subscribe to: **Gateway v1**, **NHPR/HFR v4**
+4. Wait for approval (usually instant in sandbox)
+5. Then call: `POST https://abdm-bridge.e-atria.in/api/v3/gateway/register-bridge`
+   ```json
+   {"url": "https://abdm-bridge.e-atria.in"}
+   ```
+6. Then call HFR HRP link: `POST https://abdm-bridge.e-atria.in/api/v3/hfr/hrp/link`
+   ```json
+   {
+     "hfrId": "YOUR-HFR-FACILITY-ID",
+     "services": ["HIP", "HIU"]
+   }
+   ```
+
+### 10.3 Required for M1 Clearance
+
+| Item | Action Required | Owner | Status |
+|---|---|---|---|
+| ABDM Portal API Subscriptions | Subscribe to Gateway + NHPR API products | Hospital Admin | ⚠️ Blocking |
+| HFR Facility Profile | Complete HFR profile on NHPR sandbox portal; get official HFR ID | Hospital Admin | ⚠️ Needed |
+| Bridge URL Registration | Call `POST /api/v3/gateway/register-bridge` (after subscription) | Technical Team | ⚠️ Blocked |
+| HRP Link Registration | Call `POST /api/v3/hfr/hrp/link` with real HFR ID (after subscription) | Technical Team | ⚠️ Blocked |
+| Official Facility QR | Download official QR from NHPR sandbox after HFR registration | Hospital Admin | ⚠️ Needed |
+| Scan & Share Live Test | Test with real ABHA mobile app; verify patient appears in OPD queue | QA Team | ⚠️ Pending |
+| ABHA Enrollment End-to-End | Full flow with real Aadhaar test data | QA Team | ✅ Verified |
+
+### 10.4 Required for M2 / M3
 
 | Item | Action |
 |---|---|
@@ -969,7 +1020,7 @@ FROM abdm_token_queue WHERE hospital_id = 1 ORDER BY id DESC LIMIT 1;
 | Data Encryption for Records | Encrypt FHIR bundles with HIU public key before transmission |
 | End-to-End Sandbox Test | Full patient journey: ABHA → Consent → Record Push → Record Fetch |
 
-### 10.3 Infrastructure Checklist
+### 10.5 Infrastructure Checklist
 
 | Item | Status |
 |---|---|
