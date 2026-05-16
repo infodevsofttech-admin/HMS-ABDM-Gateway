@@ -87,12 +87,12 @@
                             </div>
                         </div>
                         <div class="col-md-4">
-                            <div class="form-group" style="position:relative;">
+                            <div class="form-group">
                                 <label>Specialization <small class="text-muted" style="font-size:11px;">(SNOMED CT — multiple)</small></label>
-                                <div id="snomed-spec-admin-tags" style="margin-bottom:6px;line-height:2;"></div>
+                                <div id="snomed-spec-admin-tags" style="min-height:24px;margin-bottom:6px;line-height:2;"></div>
                                 <input type="text" id="snomed-spec-admin-input" class="form-control" placeholder="Type to search and add…" autocomplete="off">
                                 <input type="hidden" name="specializations_json" id="snomed-spec-admin-hidden" value="[]">
-                                <div id="snomed-spec-admin-drop" style="display:none;position:absolute;z-index:1000;width:100%;max-height:220px;overflow-y:auto;box-shadow:0 4px 8px rgba(0,0,0,.18);border:1px solid #ddd;border-radius:4px;background:#fff;"></div>
+                                <!-- dropdown portalled to <body> via JS to escape overflow:hidden card -->
                             </div>
                         </div>
                         <div class="col-md-4">
@@ -220,25 +220,50 @@
 <?= $this->section('scripts') ?>
 <style>
 .snomed-ac-item { display:block;padding:8px 12px;font-size:12px;color:#333;text-decoration:none; }
-.snomed-ac-item:hover, .snomed-ac-focused { background:#e8f0fe; }
+.snomed-ac-item:hover,.snomed-ac-focused { background:#e8f0fe; }
 .snomed-chip { display:inline-flex;align-items:center;gap:5px;margin:2px 4px 2px 0;padding:3px 10px;border-radius:12px;background:#dbeafe;color:#1e40af;font-size:12px; }
 .snomed-chip-rm { color:#1e40af;text-decoration:none;font-weight:bold;font-size:14px;line-height:1; }
 .snomed-chip-rm:hover { color:#991b1b; }
+/* Dropdown portalled to body — floats above overflow:hidden cards */
+.snomed-portal-drop {
+    position:fixed;
+    z-index:9999;
+    max-height:220px;
+    overflow-y:auto;
+    background:#fff;
+    border:1px solid #ddd;
+    border-radius:4px;
+    box-shadow:0 6px 20px rgba(0,0,0,.18);
+    display:none;
+}
 </style>
 <script>
 (function () {
     function initSnomed(pfx) {
         var inp    = document.getElementById(pfx + '-input');
-        var drop   = document.getElementById(pfx + '-drop');
         var tagsEl = document.getElementById(pfx + '-tags');
         var hidden = document.getElementById(pfx + '-hidden');
         if (!inp) return;
+
+        /* Create dropdown portalled to <body> to escape overflow:hidden */
+        var drop = document.createElement('div');
+        drop.id = pfx + '-drop';
+        drop.className = 'snomed-portal-drop';
+        document.body.appendChild(drop);
+
         var specs   = [];
         var focused = -1;
         var timer;
         var CSNOTK = 'https://csnotk.e-atria.in/api/search/search?state=active&semantictag=qualifier+value&acceptability=preferred&returnlimit=15&groupbyconcept=true&term=';
 
         function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+        function positionDrop() {
+            var r = inp.getBoundingClientRect();
+            drop.style.top   = (r.bottom + window.scrollY + 3) + 'px';
+            drop.style.left  = (r.left   + window.scrollX)     + 'px';
+            drop.style.width = r.width + 'px';
+        }
 
         function renderTags() {
             tagsEl.innerHTML = '';
@@ -262,6 +287,7 @@
 
         function saveHidden() { hidden.value = JSON.stringify(specs); }
         function getItems()   { return drop.querySelectorAll('.snomed-ac-item'); }
+        function hideDrop()   { drop.style.display = 'none'; focused = -1; }
 
         function setFocused(idx) {
             var items = getItems();
@@ -272,16 +298,16 @@
 
         function doSelect(term, code) {
             if (code && specs.some(function (s) { return s.code === code; })) {
-                inp.value = ''; drop.style.display = 'none'; return;
+                inp.value = ''; hideDrop(); return;
             }
             specs.push({term: term, code: code});
             renderTags(); saveHidden();
-            inp.value = ''; drop.style.display = 'none'; focused = -1;
+            inp.value = ''; hideDrop();
         }
 
         function renderDrop(data) {
             drop.innerHTML = ''; focused = -1;
-            if (!Array.isArray(data) || !data.length) { drop.style.display = 'none'; return; }
+            if (!Array.isArray(data) || !data.length) { hideDrop(); return; }
             data.forEach(function (item) {
                 var a = document.createElement('a');
                 a.href = '#'; a.className = 'snomed-ac-item';
@@ -294,6 +320,7 @@
                 });
                 drop.appendChild(a);
             });
+            positionDrop();
             drop.style.display = 'block';
         }
 
@@ -309,24 +336,27 @@
                 e.preventDefault();
                 if (focused >= 0 && items[focused]) doSelect(items[focused].getAttribute('data-term'), items[focused].getAttribute('data-code'));
             } else if (e.key === 'Escape') {
-                drop.style.display = 'none'; focused = -1;
+                hideDrop();
             }
         });
 
         inp.addEventListener('input', function () {
             var term = inp.value.trim();
             clearTimeout(timer);
-            if (term.length < 2) { drop.style.display = 'none'; return; }
+            if (term.length < 2) { hideDrop(); return; }
             timer = setTimeout(function () {
                 fetch(CSNOTK + encodeURIComponent(term))
                 .then(function (r) { return r.json(); })
                 .then(renderDrop)
-                .catch(function () { drop.style.display = 'none'; });
+                .catch(function () { hideDrop(); });
             }, 300);
         });
 
+        window.addEventListener('scroll', function () { if (drop.style.display !== 'none') positionDrop(); }, true);
+        window.addEventListener('resize', function () { if (drop.style.display !== 'none') positionDrop(); });
+
         document.addEventListener('click', function (e) {
-            if (!drop.contains(e.target) && e.target !== inp) { drop.style.display = 'none'; focused = -1; }
+            if (!drop.contains(e.target) && e.target !== inp) hideDrop();
         });
     }
 
