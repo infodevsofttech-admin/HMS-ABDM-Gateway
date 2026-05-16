@@ -1982,6 +1982,357 @@ class AbdmGateway extends BaseController
         }
     }
 
+    // ==================== Biometric (Fingerprint / Iris) ====================
+
+    /**
+     * Step 1 — Biometric Enrollment: Initialise transaction.
+     * POST /api/v3/abha/bio/enrol/init
+     *
+     * No body required from HMS.  Gateway injects scope [abha-enrol, bio-verify].
+     * Returns: { txnId }
+     */
+    public function abhaBioEnrolInit()
+    {
+        $ep        = '/api/v3/abha/bio/enrol/init';
+        $requestId = $this->generateRequestId();
+
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', $ep, 403, $authStatus, 'Invalid or missing bearer token');
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0, 'error' => 'Invalid authorization token', 'request_id' => $requestId,
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $mock = [
+                'ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'data' => ['txnId' => 'TEST-BIO-TXN-' . uniqid(), 'message' => 'Test mode: biometric auth transaction initialised.'],
+            ];
+            $this->logTestSubmission($requestId, $ep, [], $mock, 200, 'abdm.bio.enrol.init');
+            return $this->response->setJSON($mock);
+        }
+
+        $abdmPayload = ['scope' => ['abha-enrol', 'bio-verify']];
+        return $this->sendM1Request($requestId, $ep, '/abha/api/v3/enrollment/enrol/auth/init', $abdmPayload);
+    }
+
+    /**
+     * Step 3 — Biometric Enrollment: Submit fingerprint or iris PID and create ABHA.
+     * POST /api/v3/abha/bio/enrol/submit
+     *
+     * HMS sends (fingerprint): { "aadhaar": "...", "fingerPrintAuthPid": "<PID>", "mobile": "...", "type": "fingerprint" }
+     * HMS sends (iris):        { "aadhaar": "...", "irisPid": "<PID>",            "mobile": "...", "type": "iris" }
+     * Gateway RSA-encrypts aadhaar and wraps into ABDM authData.
+     * Returns: ABHA profile
+     */
+    public function abhaBioEnrolSubmit()
+    {
+        $ep        = '/api/v3/abha/bio/enrol/submit';
+        $requestId = $this->generateRequestId();
+
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', $ep, 403, $authStatus, 'Invalid or missing bearer token');
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0, 'error' => 'Invalid authorization token', 'request_id' => $requestId,
+            ]);
+        }
+
+        $body         = json_decode((string) $this->request->getBody(), true) ?? [];
+        $plainAadhaar = trim((string) ($body['aadhaar'] ?? ''));
+        $mobile       = trim((string) ($body['mobile'] ?? $body['mobileNumber'] ?? ''));
+        $bioType      = strtolower(trim((string) ($body['type'] ?? 'fingerprint')));
+
+        // Accept fingerprint PID under various common field names
+        $fpPid   = trim((string) ($body['fingerPrintAuthPid'] ?? $body['fingerprint_pid'] ?? $body['fp_pid'] ?? ''));
+        // Accept iris PID under various field names
+        $irisPid = trim((string) ($body['irisPid'] ?? $body['iris_pid'] ?? $body['Pid'] ?? ''));
+
+        if ($bioType === 'iris') {
+            $pidValue  = $irisPid;
+            $pidField  = 'Pid';
+        } else {
+            $pidValue  = $fpPid ?: $irisPid; // fallback if type not set but iris field provided
+            $pidField  = 'fingerPrintAuthPid';
+            $bioType   = 'fingerprint';
+        }
+
+        if (!preg_match('/^\d{12}$/', $plainAadhaar)) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0, 'error' => 'invalid_aadhaar', 'message' => 'Field "aadhaar" must be a 12-digit number.', 'request_id' => $requestId,
+            ]);
+        }
+
+        if ($pidValue === '') {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0, 'error' => 'missing_pid',
+                'message' => 'Biometric PID is required: "fingerPrintAuthPid" for fingerprint or "irisPid" for iris.',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $mock = [
+                'ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'data' => [
+                    'message'     => "Test mode: ABHA would be created via $bioType biometric.",
+                    'ABHAProfile' => ['ABHANumber' => '14-0000-0000-0000', 'mobile' => $mobile],
+                ],
+            ];
+            $this->logTestSubmission($requestId, $ep, ['aadhaar' => '***', 'type' => $bioType, 'mobile' => $mobile], $mock, 200, 'abdm.bio.enrol.submit');
+            return $this->response->setJSON($mock);
+        }
+
+        try {
+            $encAadhaar = $this->encryptAbdmData($plainAadhaar);
+        } catch (\Throwable $e) {
+            $this->logRequest($requestId, 'POST', $ep, 500, 'valid', $e->getMessage());
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0, 'error' => 'encryption_failed', 'message' => $e->getMessage(), 'request_id' => $requestId,
+            ]);
+        }
+
+        $authMethod = ($bioType === 'iris') ? 'iris' : 'bio';
+        $bioPayload = [
+            'aadhaar' => $encAadhaar,
+            $pidField => $pidValue,
+            'mobile'  => $mobile,
+        ];
+
+        $abdmPayload = [
+            'authData' => [
+                'authMethods' => [$authMethod],
+                $authMethod   => $bioPayload,
+            ],
+            'consent' => [
+                'code'    => 'abha-enrollment',
+                'version' => '1.4',
+            ],
+        ];
+
+        return $this->sendM1Request($requestId, $ep, '/abha/api/v3/enrollment/enrol/byAadhaar', $abdmPayload);
+    }
+
+    /**
+     * Biometric Login Step 1 — Request auth session by ABHA number.
+     * POST /api/v3/abha/bio/login/request
+     *
+     * HMS sends: { "abha_number": "14-XXXX-XXXX-XXXX" }
+     * Gateway RSA-encrypts the ABHA number and sends with scope [abha-login, aadhaar-bio-verify].
+     * Returns: { txnId } for next step
+     */
+    public function abhaBioLoginRequest()
+    {
+        $ep        = '/api/v3/abha/bio/login/request';
+        $requestId = $this->generateRequestId();
+
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', $ep, 403, $authStatus, 'Invalid or missing bearer token');
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0, 'error' => 'Invalid authorization token', 'request_id' => $requestId,
+            ]);
+        }
+
+        $body       = json_decode((string) $this->request->getBody(), true) ?? [];
+        $abhaNumber = trim((string) ($body['abha_number'] ?? $body['abhaNumber'] ?? $body['ABHANumber'] ?? ''));
+        // Accept with or without hyphens; normalise to digits-only for encryption
+        $plainAbha  = preg_replace('/[^0-9]/', '', $abhaNumber);
+
+        if (strlen($plainAbha) !== 14) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0, 'error' => 'invalid_abha_number',
+                'message' => 'Field "abha_number" must be a 14-digit ABHA number (hyphens optional).',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $mock = [
+                'ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'data' => ['txnId' => 'TEST-BIO-TXN-' . uniqid(), 'message' => 'Test mode: biometric login session initiated.'],
+            ];
+            $this->logTestSubmission($requestId, $ep, ['abha_number' => $abhaNumber], $mock, 200, 'abdm.bio.login.request');
+            return $this->response->setJSON($mock);
+        }
+
+        try {
+            $encAbha = $this->encryptAbdmData($plainAbha);
+        } catch (\Throwable $e) {
+            $this->logRequest($requestId, 'POST', $ep, 500, 'valid', $e->getMessage());
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0, 'error' => 'encryption_failed', 'message' => $e->getMessage(), 'request_id' => $requestId,
+            ]);
+        }
+
+        $abdmPayload = [
+            'scope'     => ['abha-login', 'aadhaar-bio-verify'],
+            'loginHint' => 'abha-number',
+            'loginId'   => $encAbha,
+            'otpSystem' => 'aadhaar',
+        ];
+
+        return $this->sendM1Request($requestId, $ep, '/abha/api/v3/profile/login/request/otp', $abdmPayload);
+    }
+
+    /**
+     * Biometric Login Step 3 — Verify biometric PID and complete login.
+     * POST /api/v3/abha/bio/login/verify
+     *
+     * HMS sends (fingerprint): { "txnId": "...", "fingerPrintAuthPid": "<PID>" }
+     * HMS sends (iris):        { "txnId": "...", "irisPid": "<PID>" }
+     * Gateway detects type from field names and builds ABDM authData.
+     * Returns: ABHA profile + X-Token
+     */
+    public function abhaBioLoginVerify()
+    {
+        $ep        = '/api/v3/abha/bio/login/verify';
+        $requestId = $this->generateRequestId();
+
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', $ep, 403, $authStatus, 'Invalid or missing bearer token');
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0, 'error' => 'Invalid authorization token', 'request_id' => $requestId,
+            ]);
+        }
+
+        $body    = json_decode((string) $this->request->getBody(), true) ?? [];
+        $txnId   = trim((string) ($body['txnId'] ?? $body['transactionId'] ?? ''));
+        $fpPid   = trim((string) ($body['fingerPrintAuthPid'] ?? $body['fingerprint_pid'] ?? $body['fp_pid'] ?? ''));
+        $irisPid = trim((string) ($body['irisPid'] ?? $body['iris_pid'] ?? ''));
+
+        if ($txnId === '') {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0, 'error' => 'missing_txnId', 'message' => 'Field "txnId" is required.', 'request_id' => $requestId,
+            ]);
+        }
+
+        if ($fpPid === '' && $irisPid === '') {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0, 'error' => 'missing_pid',
+                'message' => 'Biometric PID required: "fingerPrintAuthPid" for fingerprint or "irisPid" for iris.',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            $mock = [
+                'ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'data' => [
+                    'message'     => 'Test mode: ABHA logged in via biometric.',
+                    'token'       => 'TEST-XTOKEN-' . uniqid(),
+                    'ABHAProfile' => ['ABHANumber' => '14-0000-0000-0000'],
+                ],
+            ];
+            $this->logTestSubmission($requestId, $ep, ['txnId' => $txnId, 'type' => $fpPid ? 'fingerprint' : 'iris'], $mock, 200, 'abdm.bio.login.verify');
+            return $this->response->setJSON($mock);
+        }
+
+        // Build authData — iris takes precedence only if fingerprint PID absent
+        if ($irisPid !== '' && $fpPid === '') {
+            $authMethod = 'iris';
+            $authData   = ['authMethods' => ['iris'], 'iris' => ['txnId' => $txnId, 'irisPid' => $irisPid]];
+        } else {
+            $authMethod = 'bio';
+            $authData   = ['authMethods' => ['bio'], 'bio' => ['txnId' => $txnId, 'fingerPrintAuthPid' => $fpPid]];
+        }
+
+        $this->bootRepositories();
+        $startTime = microtime(true);
+        $cfg       = config('AbdmGateway');
+
+        try {
+            $abdmToken = $this->getAbdmAccessToken();
+            $verifyUrl = rtrim($cfg->m1BaseUrl, '/') . '/abha/api/v3/profile/login/verify';
+
+            $abdmPayload = [
+                'scope'    => ['abha-login', 'aadhaar-bio-verify'],
+                'authData' => $authData,
+            ];
+
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $verifyUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => (int) $cfg->m3Timeout,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => json_encode($abdmPayload),
+                CURLOPT_HTTPHEADER     => [
+                    'Authorization: Bearer ' . $abdmToken,
+                    'Content-Type: application/json',
+                    'Accept: application/json',
+                    'X-Client-ID: '   . $cfg->sourceCode,
+                    'REQUEST-ID: '    . $this->generateAbdmRequestId(),
+                    'TIMESTAMP: '     . gmdate('Y-m-d\TH:i:s.000\Z'),
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $rawVerify = curl_exec($ch);
+            $httpCode  = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlError) {
+                throw new \RuntimeException($curlError);
+            }
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $ep, $httpCode, 'valid', null, $responseTime, $rawVerify);
+
+            $verifyData = json_decode((string) $rawVerify, true);
+            if (!is_array($verifyData)) {
+                $verifyData = ['raw_response' => trim((string) $rawVerify)];
+            }
+
+            if ($httpCode < 200 || $httpCode >= 300) {
+                return $this->response->setStatusCode($httpCode)->setJSON([
+                    'ok' => 0, 'data' => $verifyData, 'request_id' => $requestId,
+                ]);
+            }
+
+            // Fetch profile if X-Token returned
+            $xToken = $verifyData['token'] ?? null;
+            if ($xToken) {
+                $profileUrl = rtrim($cfg->m1BaseUrl, '/') . '/abha/api/v3/profile/account';
+                $ch2 = curl_init();
+                curl_setopt_array($ch2, [
+                    CURLOPT_URL            => $profileUrl,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => (int) $cfg->m3Timeout,
+                    CURLOPT_HTTPHEADER     => [
+                        'Authorization: Bearer ' . $abdmToken,
+                        'X-token: Bearer ' . $xToken,
+                        'Accept: application/json',
+                        'X-Client-ID: '   . $cfg->sourceCode,
+                        'REQUEST-ID: '    . $this->generateAbdmRequestId(),
+                        'TIMESTAMP: '     . gmdate('Y-m-d\TH:i:s.000\Z'),
+                    ],
+                    CURLOPT_SSL_VERIFYPEER => false,
+                ]);
+                $rawProfile  = curl_exec($ch2);
+                curl_close($ch2);
+
+                $profileData = json_decode((string) $rawProfile, true);
+                if (is_array($profileData)) {
+                    $verifyData['profile'] = $profileData;
+                }
+            }
+
+            return $this->response->setStatusCode(200)->setJSON([
+                'ok' => 1, 'data' => $verifyData, 'request_id' => $requestId,
+            ]);
+
+        } catch (\Throwable $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $ep, 500, 'valid', $e->getMessage(), $responseTime);
+            return $this->response->setStatusCode(500)->setJSON([
+                'ok' => 0, 'error' => $e->getMessage(), 'request_id' => $requestId,
+            ]);
+        }
+    }
+
     // ==================== Scan & Pay ====================
 
     /**

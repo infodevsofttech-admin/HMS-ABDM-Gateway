@@ -101,6 +101,15 @@ $routes->group('api/v3', static function($routes) {
     $routes->post('abha/face/login/request',    'AbdmGateway::abhaFaceLoginRequest');
     $routes->post('abha/face/login/verify',     'AbdmGateway::abhaFaceLoginVerify');
 
+    // Biometric (Fingerprint / Iris) — ABHA enrollment and login via biometric device
+    // Enrollment flow (new ABHA via fingerprint/iris):
+    $routes->post('abha/bio/enrol/init',        'AbdmGateway::abhaBioEnrolInit');
+    $routes->post('abha/bio/capture-pid',       'AbdmGateway::abhaFaceCapturePid');   // shared capturePID handler
+    $routes->post('abha/bio/enrol/submit',      'AbdmGateway::abhaBioEnrolSubmit');
+    // Login flow (existing ABHA via fingerprint/iris):
+    $routes->post('abha/bio/login/request',     'AbdmGateway::abhaBioLoginRequest');
+    $routes->post('abha/bio/login/verify',      'AbdmGateway::abhaBioLoginVerify');
+
     // Scan & Pay — HMS-initiated payment order flow (proxied to ABDM scan-gateway)
     $routes->post('scan-pay/open-order',          'AbdmGateway::scanPayOpenOrder');
     $routes->post('scan-pay/on-share-open-order', 'AbdmGateway::scanPayOnShareOpenOrder');
