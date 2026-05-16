@@ -12,10 +12,15 @@ $hospital = $hospital ?? null;
 
 <div class="hp-page-header">
     <div>
-        <h2 class="hp-page-title"><i class="fa fa-user-md"></i> HPR Professionals</h2>
-        <p class="hp-page-subtitle">Manage the healthcare professionals registered under your hospital in ABDM's Health Professional Registry.</p>
+        <h5><i class="fas fa-user-md"></i> HPR Professionals</h5>
+        <nav><ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/dashboard">Home</a></li>
+            <li class="breadcrumb-item active">HPR Professionals</li>
+        </ol></nav>
     </div>
 </div>
+
+<div class="hp-content">
 
 <?php if ($message): ?>
 <div class="hp-alert hp-alert-success"><i class="fa fa-check-circle"></i> <?= esc($message) ?></div>
@@ -162,6 +167,8 @@ $hospital = $hospital ?? null;
         <?php endif; ?>
     </div>
 </div>
+
+</div><!-- /.hp-content -->
 
 <?= $this->endSection() ?>
 
