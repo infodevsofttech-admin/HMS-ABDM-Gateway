@@ -147,10 +147,10 @@ class AbdmGateway extends BaseConfig
     public string $hfrId = '';
 
     /**
-     * HFR Base URL (sandbox: facilitysbx.abdm.gov.in, prod: apinhpr.abdm.gov.in)
+     * HFR Base URL (sandbox: apihspsbx.abdm.gov.in, prod: apinhpr.abdm.gov.in)
      * @var string
      */
-    public string $hfrBaseUrl = 'https://facilitysbx.abdm.gov.in';
+    public string $hfrBaseUrl = 'https://apihspsbx.abdm.gov.in';
 
     /**
      * NPI (National Practitioner Identifier)

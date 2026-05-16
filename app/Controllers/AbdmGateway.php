@@ -3584,7 +3584,7 @@ class AbdmGateway extends BaseController
     public function hfrHrpLink(): \CodeIgniter\HTTP\ResponseInterface
     {
         return $this->proxyHfrEndpoint('/api/v3/hfr/hrp/link',
-            '/v1/bridges/MutipleHRPAddUpdateServices');
+            '/v4/int/v1/bridges/MutipleHRPAddUpdateServices');
     }
 
     // ==================== M2 — PHR / ABHA Address Verification ====================
