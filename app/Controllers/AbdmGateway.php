@@ -3264,8 +3264,534 @@ class AbdmGateway extends BaseController
      * @param array<string,mixed> $route
      * @return array<string,mixed>
      */
-    protected function dispatchBridgeRoute(array $route): array
+    // ==================== M2 Proxy Helpers ====================
+
+    /**
+     * Extract X-Token from request body key 'x_token' or X-Token header.
+     */
+    protected function extractXToken(): string
     {
+        $body = (array) ($this->request->getJSON(true) ?? []);
+        if (!empty($body['x_token'])) {
+            return ltrim((string) $body['x_token'], 'Bearer ');
+        }
+        $header = $this->request->getHeaderLine('X-Token');
+        if ($header !== '') {
+            return ltrim(trim((string) $header), 'Bearer ');
+        }
+        return '';
+    }
+
+    /**
+     * Generic HFR proxy: POST to HFR base URL (no X-Token; uses gateway access token).
+     */
+    protected function proxyHfrEndpoint(string $endpoint, string $hfrPath): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $requestId  = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', $endpoint, 403, $authStatus, 'Unauthorized');
+            return $this->response->setStatusCode(403)->setJSON(['ok' => 0, 'error' => 'Unauthorized', 'request_id' => $requestId]);
+        }
+
+        $rawBody = (string) $this->request->getBody();
+        $body    = trim($rawBody) !== '' ? ((array) json_decode($rawBody, true) ?: []) : [];
+
+        if ($this->isTestMode()) {
+            $mock = ['ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                     'data' => ['endpoint' => $endpoint, 'message' => 'Mock HFR response in test mode']];
+            $this->logTestSubmission($requestId, $endpoint, $body, $mock, 200, 'hfr.proxy');
+            return $this->response->setJSON($mock);
+        }
+
+        $this->bootRepositories();
+        $startTime = microtime(true);
+        try {
+            $url       = rtrim((string) config('AbdmGateway')->hfrBaseUrl, '/') . '/' . ltrim($hfrPath, '/');
+            $abdmToken = $this->getAbdmAccessToken();
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => (int) config('AbdmGateway')->m3Timeout,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => json_encode($body),
+                CURLOPT_HTTPHEADER     => [
+                    'Authorization: Bearer ' . $abdmToken,
+                    'Content-Type: application/json',
+                    'Accept: application/json',
+                ],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $raw  = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch);
+            curl_close($ch);
+            if ($err) throw new \RuntimeException($err);
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $endpoint, $code, 'valid', null, $responseTime, $raw);
+            $decoded = json_decode((string) $raw, true);
+            return $this->response->setStatusCode($code)->setJSON([
+                'ok'         => $code >= 200 && $code < 300 ? 1 : 0,
+                'data'       => is_array($decoded) ? $decoded : ['raw_response' => trim((string) $raw)],
+                'request_id' => $requestId,
+            ]);
+        } catch (\Throwable $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $endpoint, 500, 'valid', $e->getMessage(), $responseTime);
+            return $this->response->setStatusCode(500)->setJSON(['ok' => 0, 'error' => $e->getMessage(), 'request_id' => $requestId]);
+        }
+    }
+
+    /**
+     * Generic M1 proxy for POST endpoints that pass an X-Token (user session token).
+     * x_token is read from body or X-Token header; stripped from forwarded body.
+     */
+    protected function proxyM1WithXToken(string $endpoint, string $upstreamPath): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $requestId  = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'POST', $endpoint, 403, $authStatus, 'Unauthorized');
+            return $this->response->setStatusCode(403)->setJSON(['ok' => 0, 'error' => 'Unauthorized', 'request_id' => $requestId]);
+        }
+
+        $rawBody = (string) $this->request->getBody();
+        $body    = trim($rawBody) !== '' ? ((array) json_decode($rawBody, true) ?: []) : [];
+        $xToken  = $this->extractXToken();
+        unset($body['x_token']); // strip internal routing key before forwarding
+
+        if ($this->isTestMode()) {
+            $mock = ['ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                     'data' => ['endpoint' => $endpoint, 'message' => 'Mock response in test mode']];
+            $this->logTestSubmission($requestId, $endpoint, $body, $mock, 200, 'abdm.m1.xtoken');
+            return $this->response->setJSON($mock);
+        }
+
+        $this->bootRepositories();
+        $startTime = microtime(true);
+        try {
+            $url       = rtrim((string) config('AbdmGateway')->m1BaseUrl, '/') . '/' . ltrim($upstreamPath, '/');
+            $abdmToken = $this->getAbdmAccessToken();
+            $headers   = [
+                'Authorization: Bearer ' . $abdmToken,
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'REQUEST-ID: ' . $this->generateAbdmRequestId(),
+                'TIMESTAMP: '  . gmdate('Y-m-d\TH:i:s.000\Z'),
+            ];
+            if ($xToken !== '') {
+                $headers[] = 'X-Token: Bearer ' . $xToken;
+            }
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => (int) config('AbdmGateway')->m3Timeout,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => json_encode($body),
+                CURLOPT_HTTPHEADER     => $headers,
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $raw  = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch);
+            curl_close($ch);
+            if ($err) throw new \RuntimeException($err);
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $endpoint, $code, 'valid', null, $responseTime, $raw);
+            $decoded = json_decode((string) $raw, true);
+            return $this->response->setStatusCode($code)->setJSON([
+                'ok'         => $code >= 200 && $code < 300 ? 1 : 0,
+                'data'       => is_array($decoded) ? $decoded : ['raw_response' => trim((string) $raw)],
+                'request_id' => $requestId,
+            ]);
+        } catch (\Throwable $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'POST', $endpoint, 500, 'valid', $e->getMessage(), $responseTime);
+            return $this->response->setStatusCode(500)->setJSON(['ok' => 0, 'error' => $e->getMessage(), 'request_id' => $requestId]);
+        }
+    }
+
+    /**
+     * Generic M1 proxy for GET requests. Forwards query params; optionally attaches X-Token.
+     */
+    protected function proxyM1Get(string $endpoint, string $upstreamPath): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $requestId  = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'GET', $endpoint, 403, $authStatus, 'Unauthorized');
+            return $this->response->setStatusCode(403)->setJSON(['ok' => 0, 'error' => 'Unauthorized', 'request_id' => $requestId]);
+        }
+
+        $xToken      = $this->extractXToken();
+        $queryParams = $this->request->getGet() ?? [];
+
+        if ($this->isTestMode()) {
+            return $this->response->setJSON(['ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'data' => ['endpoint' => $endpoint, 'message' => 'Mock response in test mode']]);
+        }
+
+        $this->bootRepositories();
+        $startTime = microtime(true);
+        try {
+            $url = rtrim((string) config('AbdmGateway')->m1BaseUrl, '/') . '/' . ltrim($upstreamPath, '/');
+            if (!empty($queryParams)) {
+                $url .= '?' . http_build_query($queryParams);
+            }
+            $abdmToken = $this->getAbdmAccessToken();
+            $headers   = [
+                'Authorization: Bearer ' . $abdmToken,
+                'Accept: application/json',
+                'REQUEST-ID: ' . $this->generateAbdmRequestId(),
+                'TIMESTAMP: '  . gmdate('Y-m-d\TH:i:s.000\Z'),
+            ];
+            if ($xToken !== '') {
+                $headers[] = 'X-Token: Bearer ' . $xToken;
+            }
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => (int) config('AbdmGateway')->m3Timeout,
+                CURLOPT_HTTPGET        => true,
+                CURLOPT_HTTPHEADER     => $headers,
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $raw  = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch);
+            curl_close($ch);
+            if ($err) throw new \RuntimeException($err);
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'GET', $endpoint, $code, 'valid', null, $responseTime, $raw);
+            $decoded = json_decode((string) $raw, true);
+            return $this->response->setStatusCode($code)->setJSON([
+                'ok'         => $code >= 200 && $code < 300 ? 1 : 0,
+                'data'       => is_array($decoded) ? $decoded : ['raw_response' => trim((string) $raw)],
+                'request_id' => $requestId,
+            ]);
+        } catch (\Throwable $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'GET', $endpoint, 500, 'valid', $e->getMessage(), $responseTime);
+            return $this->response->setStatusCode(500)->setJSON(['ok' => 0, 'error' => $e->getMessage(), 'request_id' => $requestId]);
+        }
+    }
+
+    /**
+     * Generic M1 proxy for PATCH requests with X-Token.
+     */
+    protected function proxyM1Patch(string $endpoint, string $upstreamPath): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $requestId  = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            $this->logRequest($requestId, 'PATCH', $endpoint, 403, $authStatus, 'Unauthorized');
+            return $this->response->setStatusCode(403)->setJSON(['ok' => 0, 'error' => 'Unauthorized', 'request_id' => $requestId]);
+        }
+
+        $rawBody = (string) $this->request->getBody();
+        $body    = trim($rawBody) !== '' ? ((array) json_decode($rawBody, true) ?: []) : [];
+        $xToken  = $this->extractXToken();
+        unset($body['x_token']);
+
+        if ($this->isTestMode()) {
+            return $this->response->setJSON(['ok' => 1, 'mode' => 'test', 'request_id' => $requestId,
+                'data' => ['endpoint' => $endpoint, 'message' => 'Mock PATCH response in test mode']]);
+        }
+
+        $this->bootRepositories();
+        $startTime = microtime(true);
+        try {
+            $url       = rtrim((string) config('AbdmGateway')->m1BaseUrl, '/') . '/' . ltrim($upstreamPath, '/');
+            $abdmToken = $this->getAbdmAccessToken();
+            $headers   = [
+                'Authorization: Bearer ' . $abdmToken,
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'REQUEST-ID: ' . $this->generateAbdmRequestId(),
+                'TIMESTAMP: '  . gmdate('Y-m-d\TH:i:s.000\Z'),
+            ];
+            if ($xToken !== '') {
+                $headers[] = 'X-Token: Bearer ' . $xToken;
+            }
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => (int) config('AbdmGateway')->m3Timeout,
+                CURLOPT_CUSTOMREQUEST  => 'PATCH',
+                CURLOPT_POSTFIELDS     => json_encode($body),
+                CURLOPT_HTTPHEADER     => $headers,
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $raw  = curl_exec($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch);
+            curl_close($ch);
+            if ($err) throw new \RuntimeException($err);
+
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'PATCH', $endpoint, $code, 'valid', null, $responseTime, $raw);
+            $decoded = json_decode((string) $raw, true);
+            return $this->response->setStatusCode($code)->setJSON([
+                'ok'         => $code >= 200 && $code < 300 ? 1 : 0,
+                'data'       => is_array($decoded) ? $decoded : ['raw_response' => trim((string) $raw)],
+                'request_id' => $requestId,
+            ]);
+        } catch (\Throwable $e) {
+            $responseTime = round((microtime(true) - $startTime) * 1000);
+            $this->logRequest($requestId, 'PATCH', $endpoint, 500, 'valid', $e->getMessage(), $responseTime);
+            return $this->response->setStatusCode(500)->setJSON(['ok' => 0, 'error' => $e->getMessage(), 'request_id' => $requestId]);
+        }
+    }
+
+    // ==================== M2 — HFR (Health Facility Registry) ====================
+
+    /** POST /api/v3/hfr/facility/search — search facilities by name/ownership/state */
+    public function hfrFacilitySearch(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyHfrEndpoint('/api/v3/hfr/facility/search',
+            '/v4/int/FacilityManagement/v1.5/facility/search');
+    }
+
+    /** POST /api/v3/hfr/facility/contact — fetch facility contact details */
+    public function hfrFacilityContact(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyHfrEndpoint('/api/v3/hfr/facility/contact',
+            '/v4/int/v1.5/facility/fetchFacilityContactDetails');
+    }
+
+    /** POST /api/v3/hfr/facility/send-otp — send OTP to facility's registered mobile */
+    public function hfrFacilitySendOtp(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyHfrEndpoint('/api/v3/hfr/facility/send-otp',
+            '/v4/int/v1.5/facility/sendOtpToContact');
+    }
+
+    /** POST /api/v3/hfr/facility/validate-otp — validate OTP and link HMS source to facility */
+    public function hfrFacilityValidateOtp(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyHfrEndpoint('/api/v3/hfr/facility/validate-otp',
+            '/v4/int/v1.5/facility/validateOtp');
+    }
+
+    /** POST /api/v3/hfr/hrp/link — link/update bridge HRP services against a facility */
+    public function hfrHrpLink(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyHfrEndpoint('/api/v3/hfr/hrp/link',
+            '/v1/bridges/MutipleHRPAddUpdateServices');
+    }
+
+    // ==================== M2 — PHR / ABHA Address Verification ====================
+
+    /** POST /api/v3/phr/abha/search — search ABHA address */
+    public function phrAbhaSearch(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Endpoint('/api/v3/phr/abha/search',
+            '/abha/api/v3/phr/web/login/abha/search');
+    }
+
+    /** POST /api/v3/phr/abha/request-otp — request OTP for ABHA address login */
+    public function phrAbhaRequestOtp(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Endpoint('/api/v3/phr/abha/request-otp',
+            '/abha/api/v3/phr/web/login/abha/request/otp');
+    }
+
+    /** POST /api/v3/phr/abha/verify — verify OTP and get PHR session token */
+    public function phrAbhaVerify(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Endpoint('/api/v3/phr/abha/verify',
+            '/abha/api/v3/phr/web/login/abha/verify');
+    }
+
+    /** GET /api/v3/phr/profile — fetch ABHA profile via PHR session (X-Token required) */
+    public function phrGetProfile(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Get('/api/v3/phr/profile',
+            '/abha/api/v3/phr/web/login/profile/abha-profile');
+    }
+
+    /** GET /api/v3/phr/phr-card — fetch PHR card image (X-Token required) */
+    public function phrGetCard(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Get('/api/v3/phr/phr-card',
+            '/abha/api/v3/phr/web/login/profile/abha/phr-card');
+    }
+
+    /** GET /api/v3/phr/qr-code — fetch PHR QR code (X-Token required) */
+    public function phrGetQrCode(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Get('/api/v3/phr/qr-code',
+            '/abha/api/v3/phr/web/login/profile/abha/qr-code');
+    }
+
+    // ==================== M2 — ABHA Address Management ====================
+
+    /** GET /api/v3/abha/suggestions — get ABHA address suggestions (?txnId=...) */
+    public function abhaAddressSuggestions(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Get('/api/v3/abha/suggestions',
+            '/abha/api/v3/enrollment/enrol/suggestion');
+    }
+
+    /** POST /api/v3/abha/set-address — set/confirm chosen ABHA address (X-Token required) */
+    public function abhaSetAddress(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken('/api/v3/abha/set-address',
+            '/abha/api/v3/enrollment/enrol/abha-address');
+    }
+
+    /** POST /api/v3/abha/forgot/request-otp — retrieve forgotten ABHA via mobile/Aadhaar OTP */
+    public function abhaForgotRequestOtp(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Endpoint('/api/v3/abha/forgot/request-otp',
+            '/abha/api/v3/profile/login/request/otp');
+    }
+
+    /** POST /api/v3/abha/forgot/verify — verify OTP to retrieve ABHA number */
+    public function abhaForgotVerify(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Endpoint('/api/v3/abha/forgot/verify',
+            '/abha/api/v3/profile/login/verify');
+    }
+
+    // ==================== M2 — Child ABHA ====================
+
+    /** GET /api/v3/abha/children — list children linked under guardian ABHA (X-Token required) */
+    public function abhaGetChildren(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Get('/api/v3/abha/children',
+            '/abha/api/v3/enrollment/profile/children');
+    }
+
+    /** POST /api/v3/abha/child/create — create child ABHA (enrol/byAadhaar with guardian X-Token) */
+    public function abhaCreateChild(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken('/api/v3/abha/child/create',
+            '/abha/api/v3/enrollment/enrol/byAadhaar');
+    }
+
+    // ==================== M2 — ABHA Profile Management ====================
+
+    /** GET /api/v3/profile/account — fetch full ABHA profile (X-Token required) */
+    public function profileGetAccount(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Get('/api/v3/profile/account',
+            '/abha/api/v3/profile/account');
+    }
+
+    /** PATCH /api/v3/profile/account — update ABHA profile fields (X-Token required) */
+    public function profileUpdateAccount(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Patch('/api/v3/profile/account',
+            '/abha/api/v3/profile/account');
+    }
+
+    /** GET /api/v3/profile/qrcode — fetch ABHA profile QR code (X-Token required) */
+    public function profileGetQrCode(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Get('/api/v3/profile/qrcode',
+            '/abha/api/v3/profile/account/qrCode');
+    }
+
+    /** POST /api/v3/profile/update/request-otp — request OTP for profile update (email/mobile/re-KYC) */
+    public function profileUpdateRequestOtp(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken('/api/v3/profile/update/request-otp',
+            '/abha/api/v3/profile/account/request/otp');
+    }
+
+    /** POST /api/v3/profile/update/verify — verify OTP to confirm profile update */
+    public function profileUpdateVerify(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken('/api/v3/profile/update/verify',
+            '/abha/api/v3/profile/account/verify');
+    }
+
+    /** GET /api/v3/profile/logout — logout ABHA session (X-Token required) */
+    public function profileLogout(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Get('/api/v3/profile/logout',
+            '/abha/api/v3/profile/account/request/logout');
+    }
+
+    /** POST /api/v3/profile/delete/request-otp — initiate ABHA deletion (send scope:delete OTP) */
+    public function profileDeleteRequestOtp(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken('/api/v3/profile/delete/request-otp',
+            '/abha/api/v3/profile/account/request/otp');
+    }
+
+    /** POST /api/v3/profile/delete/confirm — confirm ABHA deletion with OTP */
+    public function profileDeleteConfirm(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken('/api/v3/profile/delete/confirm',
+            '/abha/api/v3/profile/account/verify');
+    }
+
+    /** POST /api/v3/profile/deactivate/request-otp — initiate ABHA deactivation OTP */
+    public function profileDeactivateRequestOtp(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken('/api/v3/profile/deactivate/request-otp',
+            '/abha/api/v3/profile/account/request/otp');
+    }
+
+    /** POST /api/v3/profile/deactivate/confirm — confirm ABHA deactivation with OTP */
+    public function profileDeactivateConfirm(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken('/api/v3/profile/deactivate/confirm',
+            '/abha/api/v3/profile/account/verify');
+    }
+
+    /** POST /api/v3/profile/reactivate/request-otp — request OTP to reactivate ABHA */
+    public function profileReactivateRequestOtp(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Endpoint('/api/v3/profile/reactivate/request-otp',
+            '/abha/api/v3/profile/login/request/otp');
+    }
+
+    /** POST /api/v3/profile/reactivate/verify — verify OTP and reactivate ABHA */
+    public function profileReactivateVerify(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Endpoint('/api/v3/profile/reactivate/verify',
+            '/abha/api/v3/profile/login/verify');
+    }
+
+    // ==================== M2 — Benefit APIs ====================
+
+    /** POST /api/v3/benefit/link — link or delink a benefit scheme to/from ABHA (X-Token required) */
+    public function benefitLinkDelink(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken('/api/v3/benefit/link',
+            '/abha/api/v3/profile/benefit/linkAndDelink');
+    }
+
+    /** POST /api/v3/benefit/search — search benefit schemes for a patient (X-Token required) */
+    public function benefitSearch(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken('/api/v3/benefit/search',
+            '/abha/api/v3/profile/benefit/search');
+    }
+
+    /** GET /api/v3/benefit/abha/{abha} — get benefits linked to a specific ABHA number */
+    public function benefitGetByAbha(string $abha): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $cleanAbha = preg_replace('/[^0-9\-]/', '', $abha);
+        return $this->proxyM1Get(
+            '/api/v3/benefit/abha/' . $cleanAbha,
+            '/abha/api/v3/profile/benefit/abha/' . $cleanAbha
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    protected function dispatchBridgeRoute(array $route): array    {
         $method = strtoupper((string) ($route['method'] ?? 'POST'));
         $path = (string) ($route['path'] ?? '');
         $query = isset($route['query']) && is_array($route['query']) ? $route['query'] : [];

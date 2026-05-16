@@ -147,6 +147,12 @@ class AbdmGateway extends BaseConfig
     public string $hfrId = '';
 
     /**
+     * HFR Base URL (sandbox: facilitysbx.abdm.gov.in, prod: apinhpr.abdm.gov.in)
+     * @var string
+     */
+    public string $hfrBaseUrl = 'https://facilitysbx.abdm.gov.in';
+
+    /**
      * NPI (National Practitioner Identifier)
      * @var string
      */
@@ -184,8 +190,9 @@ class AbdmGateway extends BaseConfig
         $this->m1MobileVerifyOtpPath = env('ABDM_M1_MOBILE_VERIFY_OTP_PATH', $this->m1MobileVerifyOtpPath);
         $this->snomedUrl = env('SNOMED_SERVICE_URL', $this->snomedUrl);
         $this->sourceCode = env('GATEWAY_SOURCE_CODE', $this->sourceCode);
-        $this->hfrId = env('ABDM_HFR_ID', '');
-        $this->npiId = env('ABDM_NPI_ID', '');
+        $this->hfrId      = env('ABDM_HFR_ID', '');
+        $this->hfrBaseUrl = env('ABDM_HFR_BASE_URL', $this->hfrBaseUrl);
+        $this->npiId      = env('ABDM_NPI_ID', '');
         $this->publicUrl = env('GATEWAY_PUBLIC_URL', $this->publicUrl);
         $this->testMode = filter_var(env('GATEWAY_TEST_MODE', 'true'), FILTER_VALIDATE_BOOLEAN);
     }

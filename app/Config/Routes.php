@@ -118,6 +118,50 @@ $routes->group('api/v3', static function($routes) {
     $routes->post('scan-pay/notify',              'AbdmGateway::scanPayNotify');
     $routes->post('scan-pay/order-status',        'AbdmGateway::scanPayOrderStatus');
     $routes->get('scan-pay/details',              'AbdmGateway::scanPayDetails');
+
+    // ==================== M2 — HFR (Health Facility Registry) ====================
+    $routes->post('hfr/facility/search',          'AbdmGateway::hfrFacilitySearch');
+    $routes->post('hfr/facility/contact',         'AbdmGateway::hfrFacilityContact');
+    $routes->post('hfr/facility/send-otp',        'AbdmGateway::hfrFacilitySendOtp');
+    $routes->post('hfr/facility/validate-otp',    'AbdmGateway::hfrFacilityValidateOtp');
+    $routes->post('hfr/hrp/link',                 'AbdmGateway::hfrHrpLink');
+
+    // ==================== M2 — PHR / ABHA Address Verification ====================
+    $routes->post('phr/abha/search',              'AbdmGateway::phrAbhaSearch');
+    $routes->post('phr/abha/request-otp',         'AbdmGateway::phrAbhaRequestOtp');
+    $routes->post('phr/abha/verify',              'AbdmGateway::phrAbhaVerify');
+    $routes->get('phr/profile',                   'AbdmGateway::phrGetProfile');
+    $routes->get('phr/phr-card',                  'AbdmGateway::phrGetCard');
+    $routes->get('phr/qr-code',                   'AbdmGateway::phrGetQrCode');
+
+    // ==================== M2 — ABHA Address & Forgot ABHA ====================
+    $routes->get('abha/suggestions',              'AbdmGateway::abhaAddressSuggestions');
+    $routes->post('abha/set-address',             'AbdmGateway::abhaSetAddress');
+    $routes->post('abha/forgot/request-otp',      'AbdmGateway::abhaForgotRequestOtp');
+    $routes->post('abha/forgot/verify',           'AbdmGateway::abhaForgotVerify');
+
+    // ==================== M2 — Child ABHA ====================
+    $routes->get('abha/children',                 'AbdmGateway::abhaGetChildren');
+    $routes->post('abha/child/create',            'AbdmGateway::abhaCreateChild');
+
+    // ==================== M2 — ABHA Profile Management ====================
+    $routes->get('profile/account',               'AbdmGateway::profileGetAccount');
+    $routes->patch('profile/account',             'AbdmGateway::profileUpdateAccount');
+    $routes->get('profile/qrcode',                'AbdmGateway::profileGetQrCode');
+    $routes->post('profile/update/request-otp',   'AbdmGateway::profileUpdateRequestOtp');
+    $routes->post('profile/update/verify',        'AbdmGateway::profileUpdateVerify');
+    $routes->get('profile/logout',                'AbdmGateway::profileLogout');
+    $routes->post('profile/delete/request-otp',   'AbdmGateway::profileDeleteRequestOtp');
+    $routes->post('profile/delete/confirm',       'AbdmGateway::profileDeleteConfirm');
+    $routes->post('profile/deactivate/request-otp', 'AbdmGateway::profileDeactivateRequestOtp');
+    $routes->post('profile/deactivate/confirm',   'AbdmGateway::profileDeactivateConfirm');
+    $routes->post('profile/reactivate/request-otp', 'AbdmGateway::profileReactivateRequestOtp');
+    $routes->post('profile/reactivate/verify',    'AbdmGateway::profileReactivateVerify');
+
+    // ==================== M2 — Benefit APIs ====================
+    $routes->post('benefit/link',                 'AbdmGateway::benefitLinkDelink');
+    $routes->post('benefit/search',               'AbdmGateway::benefitSearch');
+    $routes->get('benefit/abha/(:any)',            'AbdmGateway::benefitGetByAbha/$1');
 });
 
 // ==================== Authentication Routes ====================
