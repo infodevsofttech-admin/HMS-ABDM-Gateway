@@ -51,40 +51,40 @@ $hospital = $hospital ?? null;
             <?= csrf_field() ?>
             <!-- Row 1: Name / HPR ID / Designation -->
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px;">
-                <div>
-                    <label class="hp-label">Full Name <span style="color:red">*</span></label>
-                    <input type="text" name="name" class="hp-input" placeholder="Dr. Rajesh Kumar" required>
+                <div class="form-group">
+                    <label>Full Name <span style="color:red">*</span></label>
+                    <input type="text" name="name" class="form-control" placeholder="Dr. Rajesh Kumar" required>
                 </div>
-                <div>
-                    <label class="hp-label">HPR ID <span style="color:red">*</span></label>
-                    <input type="text" name="hpr_id" class="hp-input" placeholder="rajesh.kumar@hpr.abdm" required>
-                    <small style="color:#6b7280;font-size:12px;">Format: <code>name@hpr.abdm</code> or 14-digit number</small>
+                <div class="form-group">
+                    <label>HPR ID <span style="color:red">*</span></label>
+                    <input type="text" name="hpr_id" class="form-control" placeholder="rajesh.kumar@hpr.abdm" required>
+                    <small class="text-muted">Format: <code>name@hpr.abdm</code> or 14-digit number</small>
                 </div>
-                <div>
-                    <label class="hp-label">Designation</label>
-                    <input type="text" name="designation" class="hp-input" placeholder="Senior Physician">
+                <div class="form-group">
+                    <label>Designation</label>
+                    <input type="text" name="designation" class="form-control" placeholder="Senior Physician">
                 </div>
             </div>
             <!-- Row 2: Specialization / Department / Reg Number -->
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
-                <div style="position:relative;">
-                    <label class="hp-label">Specialization <span style="color:#6b7280;font-size:11px;">(SNOMED CT — multiple)</span></label>
+                <div class="form-group">
+                    <label>Specialization <small class="text-muted" style="font-size:11px;">(SNOMED CT — multiple)</small></label>
                     <div id="snomed-spec-portal-tags" style="min-height:28px;margin-bottom:6px;line-height:2;"></div>
-                    <input type="text" id="snomed-spec-portal-input" class="hp-input" placeholder="Type to search and add…" autocomplete="off">
+                    <input type="text" id="snomed-spec-portal-input" class="form-control" placeholder="Type to search and add…" autocomplete="off">
                     <input type="hidden" name="specializations_json" id="snomed-spec-portal-hidden" value="[]">
                     <!-- dropdown is appended to body via JS to escape overflow:hidden -->
                 </div>
-                <div>
-                    <label class="hp-label">Department</label>
-                    <input type="text" name="department" class="hp-input" placeholder="OPD">
+                <div class="form-group">
+                    <label>Department</label>
+                    <input type="text" name="department" class="form-control" placeholder="OPD">
                 </div>
-                <div>
-                    <label class="hp-label">Reg. Number (MCI/State)</label>
-                    <input type="text" name="registration_number" class="hp-input" placeholder="MCI-12345">
+                <div class="form-group">
+                    <label>Reg. Number (MCI/State)</label>
+                    <input type="text" name="registration_number" class="form-control" placeholder="MCI-12345">
                 </div>
             </div>
             <div style="margin-top:16px;">
-                <button type="submit" class="hp-btn hp-btn-primary"><i class="fa fa-plus"></i> Add Professional</button>
+                <button type="submit" class="btn btn-primary"><i class="fa fa-plus"></i> Add Professional</button>
             </div>
         </form>
     </div>
