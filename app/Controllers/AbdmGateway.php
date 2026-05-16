@@ -687,6 +687,214 @@ class AbdmGateway extends BaseController
         }
     }
 
+    // =====================================================================
+    // M1 COMPLETION — Missing enrollment / account / login endpoints
+    // =====================================================================
+
+    /**
+     * POST /api/v3/abha/enrol/auth
+     * ABDM: POST /abha/api/v3/enrollment/auth/byAbdm
+     * Used after ABHA creation to verify/update alternate mobile number.
+     * Requires T1 X-Token from enrolByAadhaar response.
+     */
+    public function abhaEnrolAuth(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken(
+            '/api/v3/abha/enrol/auth',
+            '/abha/api/v3/enrollment/auth/byAbdm'
+        );
+    }
+
+    /**
+     * POST /api/v3/abha/account/search
+     * ABDM: POST /abha/api/v3/profile/account/abha/search
+     * Search for an existing ABHA account by ABHA number.
+     * Requires X-Token (user-level session token).
+     */
+    public function abhaAccountSearch(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken(
+            '/api/v3/abha/account/search',
+            '/abha/api/v3/profile/account/abha/search'
+        );
+    }
+
+    /**
+     * GET /api/v3/abha/account/abha-card
+     * ABDM: GET /abha/api/v3/profile/account/abha-card
+     * Download ABHA card PNG using profile-level X-Token.
+     * (Thin alternative to /abha/card — same upstream path, identical logic.)
+     */
+    public function abhaAccountCard(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Get(
+            '/api/v3/abha/account/abha-card',
+            '/abha/api/v3/profile/account/abha-card'
+        );
+    }
+
+    /**
+     * POST /api/v3/abha/account/email/request-verify
+     * ABDM: POST /abha/api/v3/profile/account/request/emailVerificationLink
+     * Trigger email verification link for linked email address.
+     * Requires X-Token.
+     */
+    public function abhaAccountEmailVerify(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1WithXToken(
+            '/api/v3/abha/account/email/request-verify',
+            '/abha/api/v3/profile/account/request/emailVerificationLink'
+        );
+    }
+
+    /**
+     * POST /api/v3/abha/login/search
+     * ABDM: POST /abha/api/v3/profile/login/search
+     * Password-based login: send ABHA address/number to find login methods.
+     * No X-Token required (pre-auth step).
+     */
+    public function abhaLoginSearch(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        return $this->proxyM1Endpoint(
+            '/api/v3/abha/login/search',
+            '/abha/api/v3/profile/login/search'
+        );
+    }
+
+    // =====================================================================
+    // ABDM Bridge URL Management (one-time setup / admin use)
+    // =====================================================================
+
+    /**
+     * POST /api/v3/gateway/register-bridge
+     * Registers this gateway URL with ABDM (PATCH gateway/v1/bridges).
+     * Body: {"url": "https://abdm-bridge.e-atria.in"}
+     * Only callable with valid bearer token; admin use only.
+     */
+    public function registerBridgeUrl(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $requestId  = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0, 'error' => 'Unauthorized', 'request_id' => $requestId,
+            ]);
+        }
+
+        $body = (array) ($this->request->getJSON(true) ?? []);
+        $url  = trim((string) ($body['url'] ?? ''));
+        if ($url === '') {
+            return $this->response->setStatusCode(400)->setJSON([
+                'ok' => 0, 'error' => 'url field required', 'request_id' => $requestId,
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            return $this->response->setJSON([
+                'ok' => 1, 'mode' => 'test', 'message' => 'Mock bridge register — test mode',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        $this->bootRepositories();
+        $cfg       = config('AbdmGateway');
+        $abdmToken = $this->getAbdmAccessToken();
+        $abdmReqId = $this->generateAbdmRequestId();
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => 'https://dev.abdm.gov.in/gateway/v1/bridges',
+            CURLOPT_CUSTOMREQUEST  => 'PATCH',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_POSTFIELDS     => json_encode(['url' => $url]),
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Authorization: Bearer ' . $abdmToken,
+                'REQUEST-ID: ' . $abdmReqId,
+                'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+            ],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+        $respBody = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr) {
+            return $this->response->setStatusCode(502)->setJSON([
+                'ok' => 0, 'error' => 'cURL: ' . $curlErr, 'request_id' => $requestId,
+            ]);
+        }
+
+        $decoded = json_decode((string) $respBody, true);
+        return $this->response->setStatusCode($httpCode >= 200 && $httpCode < 300 ? 200 : $httpCode)->setJSON([
+            'ok'         => ($httpCode >= 200 && $httpCode < 300) ? 1 : 0,
+            'http_code'  => $httpCode,
+            'abdm'       => $decoded ?? (string) $respBody,
+            'request_id' => $requestId,
+        ]);
+    }
+
+    /**
+     * GET /api/v3/gateway/bridge-services
+     * Returns the bridge services currently registered with ABDM.
+     */
+    public function getBridgeServices(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $requestId  = $this->generateRequestId();
+        $authStatus = $this->validateBearer();
+        if ($authStatus !== 'valid') {
+            return $this->response->setStatusCode(403)->setJSON([
+                'ok' => 0, 'error' => 'Unauthorized', 'request_id' => $requestId,
+            ]);
+        }
+
+        if ($this->isTestMode()) {
+            return $this->response->setJSON([
+                'ok' => 1, 'mode' => 'test', 'message' => 'Mock bridge services — test mode',
+                'request_id' => $requestId,
+            ]);
+        }
+
+        $this->bootRepositories();
+        $abdmToken = $this->getAbdmAccessToken();
+        $abdmReqId = $this->generateAbdmRequestId();
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => 'https://dev.abdm.gov.in/gateway/v1/bridges/getServices',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_HTTPHEADER     => [
+                'Accept: application/json',
+                'Authorization: Bearer ' . $abdmToken,
+                'REQUEST-ID: ' . $abdmReqId,
+                'TIMESTAMP: ' . gmdate('Y-m-d\TH:i:s.000\Z'),
+            ],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+        $respBody = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr) {
+            return $this->response->setStatusCode(502)->setJSON([
+                'ok' => 0, 'error' => 'cURL: ' . $curlErr, 'request_id' => $requestId,
+            ]);
+        }
+
+        $decoded = json_decode((string) $respBody, true);
+        return $this->response->setJSON([
+            'ok'         => ($httpCode >= 200 && $httpCode < 300) ? 1 : 0,
+            'http_code'  => $httpCode,
+            'abdm'       => $decoded ?? (string) $respBody,
+            'request_id' => $requestId,
+        ]);
+    }
+
     /**
      * Consent Request Endpoint
      * POST /api/v3/consent/request

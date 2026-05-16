@@ -67,7 +67,22 @@ $routes->group('api/v3', static function($routes) {
 
     // ABHA Card Download
     $routes->get('abha/card', 'AbdmGateway::abhaCard');
-    
+
+    // ABHA Enrollment — post-creation mobile update (alternate mobile verify)
+    $routes->post('abha/enrol/auth',           'AbdmGateway::abhaEnrolAuth');
+
+    // ABHA Account — search, profile card (X-Token), email verification
+    $routes->post('abha/account/search',       'AbdmGateway::abhaAccountSearch');
+    $routes->get('abha/account/abha-card',     'AbdmGateway::abhaAccountCard');
+    $routes->post('abha/account/email/request-verify', 'AbdmGateway::abhaAccountEmailVerify');
+
+    // ABHA Login — password-based login search
+    $routes->post('abha/login/search',         'AbdmGateway::abhaLoginSearch');
+
+    // Bridge URL management (one-time registration with ABDM)
+    $routes->post('gateway/register-bridge',   'AbdmGateway::registerBridgeUrl');
+    $routes->get('gateway/bridge-services',    'AbdmGateway::getBridgeServices');
+
     // Consent Operations
     $routes->post('consent/request', 'AbdmGateway::consentRequest');
     
