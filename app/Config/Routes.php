@@ -91,6 +91,16 @@ $routes->group('api/v3', static function($routes) {
     // Running Token Status — query current OPD token being served at a HIP
     $routes->get('opd/running-token-status', 'AbdmGateway::opdRunningTokenStatus');
 
+    // Face Auth — ABHA creation and login via biometric face recognition
+    // Enrollment flow (new ABHA via face):
+    $routes->post('abha/face/enrol/init',       'AbdmGateway::abhaFaceEnrolInit');
+    $routes->post('abha/face/capture-pid',      'AbdmGateway::abhaFaceCapturePid');
+    $routes->post('abha/face/enrol/submit',     'AbdmGateway::abhaFaceEnrolSubmit');
+    // QR login flow (existing ABHA via face):
+    $routes->post('abha/face/login/search',     'AbdmGateway::abhaFaceLoginSearch');
+    $routes->post('abha/face/login/request',    'AbdmGateway::abhaFaceLoginRequest');
+    $routes->post('abha/face/login/verify',     'AbdmGateway::abhaFaceLoginVerify');
+
     // Scan & Pay — HMS-initiated payment order flow (proxied to ABDM scan-gateway)
     $routes->post('scan-pay/open-order',          'AbdmGateway::scanPayOpenOrder');
     $routes->post('scan-pay/on-share-open-order', 'AbdmGateway::scanPayOnShareOpenOrder');
